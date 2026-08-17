@@ -1,11 +1,11 @@
 import mysql.connector
 from mysql.connector import Error
-
+from user_crendences import user
 #config do banco
 DB_CONFIG = {
     "host": "localhost",
-    "user": "admin_financeiro",
-    "password": "senha123"
+    "user": user.user,
+    "password": user.password
 }
 
 def get_connection(db_name="finance_db"):
@@ -82,4 +82,6 @@ def inicializar_banco():
     except Error as e:
         print(f"❌ Erro ao inicializar o banco: {e}")
 
-
+#python3 database/connection_bd.py
+##if __name__ == "__main__":
+##    inicializar_banco()
