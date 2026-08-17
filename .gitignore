@@ -1,5 +1,6 @@
 # Senhas e Variáveis de Ambiente
 .env
+database/user_credences
 
 # Ambiente Virtual
 venv/
