@@ -127,8 +127,11 @@ def main(page: ft.Page):
     )
 
     def abrir_modal(e):
-        page.overlay.append(modal_novo) 
         modal_novo.open = True
+        page.update()
+
+    def fechar_modal(e):
+        modal_novo.open = False
         page.update()
         
     # =====================================================================
@@ -206,6 +209,13 @@ def main(page: ft.Page):
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
         tabela_despesas
     )
+
+    # CADASTRA O MODAL AQUI (Garante que ele exista na tela, mas invisível)
+    page.overlay.append(modal_novo)
+
+    # Atualizações iniciais
+    atualizar_tabela()
+    atualizar_cards_resumo()
 
 if __name__ == "__main__":
     ft.run(main)
