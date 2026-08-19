@@ -2,7 +2,7 @@ import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
 from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao
+from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias
 
 def main(page: ft.Page):
     # 1. Configurações da Janela
@@ -58,12 +58,14 @@ def main(page: ft.Page):
     valor_input = ft.TextField(label="Valor (R$)", width=300, keyboard_type=ft.KeyboardType.NUMBER)
     data_input = ft.TextField(label="Data (AAAA-MM-DD)", width=300, value=datetime.today().strftime('%Y-%m-%d'))
     tipo_dropdown = ft.Dropdown(label="Tipo", width=300, options=[ft.dropdown.Option("Receita"), ft.dropdown.Option("Despesa")])
-    categoria_dropdown = ft.Dropdown(label="Categoria", width=300, options=[
-        ft.dropdown.Option(key="1", text="Alimentação"),
-        ft.dropdown.Option(key="2", text="Salário"),
-        ft.dropdown.Option(key="3", text="Moradia"),
-        ft.dropdown.Option(key="4", text="Streaming"),
-    ])
+    # Carrega as categorias do banco via Controller
+    lista_categorias_db = obter_opcoes_categorias()
+    # Monta as opções do Flet dinamicamente
+    opcoes_dropdown = []
+    for cat in lista_categorias_db:
+        opcoes_dropdown.append(ft.dropdown.Option(key=cat["key"], text=cat["text"]))
+        
+    categoria_dropdown = ft.Dropdown(label="Categoria", width=300, options=opcoes_dropdown)
 
     # 4.2 Lógica dos botões do Modal
     def fechar_modal(e):
@@ -92,6 +94,9 @@ def main(page: ft.Page):
             tipo_dropdown.value = None
             categoria_dropdown.value = None
             modal_novo.open = False
+
+            # Atualiza a tabela com o novo registro!
+            atualizar_tabela()
         
         page.update()
 
@@ -139,26 +144,42 @@ def main(page: ft.Page):
         )
 
     # 6. A Tabela de Transações
-    def visualizar_despesas():
-        return ft.DataTable(
-            width=float("inf"), 
-            columns=[
-                ft.DataColumn(ft.Text("Descrição", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("Categoria", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("Data", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(ft.Text("Valor", weight=ft.FontWeight.BOLD)),
-            ],
-            rows=[
+    # 5. A Tabela de Transações (Dinâmica)
+    tabela_despesas = ft.DataTable(
+        width=float("inf"),
+        columns=[
+            ft.DataColumn(ft.Text("Descrição", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Categoria", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Data", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Valor", weight=ft.FontWeight.BOLD)),
+        ],
+        rows=[] # Começa vazia
+    )
+
+    def atualizar_tabela():
+        """Pede os dados ao Controller e recria as linhas da tabela."""
+        tabela_despesas.rows.clear()
+        
+        transacoes = obter_transacoes_formatadas()
+        
+        for t in transacoes:
+            # Define a cor baseada no tipo (Despesa = Vermelho, Receita = Verde)
+            cor_texto = ft.Colors.RED_400 if t["eh_despesa"] else ft.Colors.GREEN_400
+            
+            tabela_despesas.rows.append(
                 ft.DataRow(
                     cells=[
-                        ft.DataCell(ft.Text("Spotify")),
-                        ft.DataCell(ft.Text("Streaming")),
-                        ft.DataCell(ft.Text("12/10/2023")),
-                        ft.DataCell(ft.Text("- R$ 21,90", color=ft.Colors.RED_400)),
-                    ],
-                ),
-            ],
-        )
+                        ft.DataCell(ft.Text(t["descricao"])),
+                        ft.DataCell(ft.Text(t["categoria"])),
+                        ft.DataCell(ft.Text(t["data"])),
+                        ft.DataCell(ft.Text(t["valor_texto"], color=cor_texto)),
+                    ]
+                )
+            )
+        page.update()
+
+    # Chama a função para carregar os dados assim que o app abrir
+    atualizar_tabela()
 
     # 7. Adicionando tudo na tela
     page.add(
@@ -168,7 +189,7 @@ def main(page: ft.Page):
         ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
         criar_linha_acoes(),
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-        visualizar_despesas()
+        tabela_despesas
     )
 
 if __name__ == "__main__":
