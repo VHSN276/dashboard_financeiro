@@ -1,7 +1,8 @@
 import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
-from database.operations import adicionar_nova_transacao 
+from database.operations import adicionar_nova_transacao
+from controllers.transaction_controller import processar_nova_transacao
 
 def main(page: ft.Page):
     # 1. Configurações da Janela
@@ -70,42 +71,29 @@ def main(page: ft.Page):
         page.update()
 
     def salvar_transacao(e):
-        try:
-            # Substitui vírgula por ponto para o banco aceitar
-            valor_formatado = float(valor_input.value.replace(",", "."))
-            
-            # Envia para o MySQL
-            sucesso = adicionar_nova_transacao(
-                descricao=descricao_input.value,
-                valor=valor_formatado,
-                data=data_input.value,
-                tipo=tipo_dropdown.value,
-                categoria_id=int(categoria_dropdown.value)
-            )
+        # Envia tudo como texto para o Controlador decidir o que fazer
+        sucesso, mensagem = processar_nova_transacao(
+            descricao=descricao_input.value,
+            valor_str=valor_input.value,
+            data=data_input.value,
+            tipo=tipo_dropdown.value,
+            categoria_id_str=categoria_dropdown.value
+        )
 
-            if sucesso:
-                # Mostra aviso de sucesso
-                page.snack_bar = ft.SnackBar(ft.Text("Transação salva com sucesso!"), bgcolor=ft.Colors.GREEN)
-                page.snack_bar.open = True
-                
-                # Limpa os campos para a próxima
-                descricao_input.value = ""
-                valor_input.value = ""
-                tipo_dropdown.value = None
-                categoria_dropdown.value = None
-                
-                modal_novo.open = False # <-- Ajuste aqui
-                page.update()
-            else:
-                page.snack_bar = ft.SnackBar(ft.Text("Erro ao salvar no banco de dados."), bgcolor=ft.Colors.RED)
-                page.snack_bar.open = True
-                page.update()
+        # Configura a cor do aviso baseado no sucesso ou erro
+        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
+        page.snack_bar.open = True
 
-        except Exception as erro:
-            # Caso o usuário deixe algo em branco ou digite letras no valor
-            page.snack_bar = ft.SnackBar(ft.Text(f"Erro: Verifique os campos preenchidos. Detalhe: {erro}"), bgcolor=ft.Colors.RED)
-            page.snack_bar.open = True
-            page.update()
+        # Se deu certo, limpa os campos e fecha o modal
+        if sucesso:
+            descricao_input.value = ""
+            valor_input.value = ""
+            tipo_dropdown.value = None
+            categoria_dropdown.value = None
+            modal_novo.open = False
+        
+        page.update()
 
     # 4.3 Criação da janela Modal
     modal_novo = ft.AlertDialog(
