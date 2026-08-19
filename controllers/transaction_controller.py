@@ -65,3 +65,32 @@ def obter_opcoes_categorias():
         opcoes.append({"key": str(id_cat), "text": nome_cat})
         
     return opcoes
+
+def obter_resumo_financeiro():
+    """
+    Controller: Calcula os totais de ganhos, gastos e o saldo restante.
+    Retorna uma tupla com os três valores formatados em texto.
+    """
+    transacoes = listar_transacoes() # Reutilizamos a função do Model!
+    
+    total_ganhos = 0.0
+    total_gastos = 0.0
+    
+    for t in transacoes:
+        valor = float(t[3]) # A posição 3 é o valor
+        tipo = t[4].upper() # A posição 4 é o tipo (Receita/Despesa)
+        
+        if tipo == "RECEITA":
+            total_ganhos += valor
+        else:
+            total_gastos += valor
+            
+    saldo_restante = total_ganhos - total_gastos
+    
+    # Formata para o padrão brasileiro (ex: 1200.50 -> 1.200,50)
+    # Como formatação complexa de moeda pode ser chata no Python, vamos fazer uma formatação simples
+    ganhos_str = f"R$ {total_ganhos:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    gastos_str = f"R$ {total_gastos:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    restante_str = f"R$ {saldo_restante:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
+    return ganhos_str, gastos_str, restante_str

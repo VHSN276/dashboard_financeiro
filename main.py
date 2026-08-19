@@ -2,8 +2,7 @@ import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
 from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias
-
+from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro
 def main(page: ft.Page):
     # 1. Configurações da Janela
     page.title = "Controle Financeiro"
@@ -26,7 +25,12 @@ def main(page: ft.Page):
     )
 
     # 3. Criando os Cards de Resumo
-    def criar_card(titulo, valor, cor_texto):
+    # Transformamos os textos em variáveis globais da tela para podermos atualizá-los
+    texto_ganhos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
+    texto_gastos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
+    texto_restante = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
+
+    def criar_card(titulo, texto_dinamico, cor_texto):
         return ft.Card(
             elevation=5,
             content=ft.Container(
@@ -34,20 +38,19 @@ def main(page: ft.Page):
                 width=260,
                 content=ft.Column([
                     ft.Text(titulo, size=16, weight=ft.FontWeight.W_500, color=cor_texto),
-                    ft.Text(f"R$ {valor}", size=28, weight=ft.FontWeight.BOLD)
+                    texto_dinamico # Injeta a variável de texto aqui
                 ])
             )
         )
 
-    card_ganhos = criar_card("Ganhos", "1.200", ft.Colors.GREEN_400)
-    card_gastos = criar_card("Gastos", "21,90", ft.Colors.RED_400)
-    card_restante = criar_card("Restante", "1.178,10", ft.Colors.BLUE_400)
+    card_ganhos = criar_card("Ganhos", texto_ganhos, ft.Colors.GREEN_400)
+    card_gastos = criar_card("Gastos", texto_gastos, ft.Colors.RED_400)
+    card_restante = criar_card("Restante", texto_restante, ft.Colors.BLUE_400)
 
     linha_resumo = ft.Row(
         controls=[card_ganhos, card_gastos, card_restante],
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN
     )
-
 
     # =====================================================================
     # 4. SESSÃO DO FORMULÁRIO (MODAL) E BANCO DE DADOS
@@ -72,6 +75,18 @@ def main(page: ft.Page):
         modal_novo.open = False
         page.update()
 
+    def atualizar_cards_resumo():
+        ganhos, gastos, restante = obter_resumo_financeiro()
+        
+        texto_ganhos.value = ganhos
+        texto_gastos.value = gastos
+        texto_restante.value = restante
+        
+        page.update()
+        
+    # Chama a função para carregar os números ao abrir o app
+    atualizar_cards_resumo()
+
     def salvar_transacao(e):
         # Envia tudo como texto para o Controlador decidir o que fazer
         sucesso, mensagem = processar_nova_transacao(
@@ -81,7 +96,6 @@ def main(page: ft.Page):
             tipo=tipo_dropdown.value,
             categoria_id_str=categoria_dropdown.value
         )
-
         # Configura a cor do aviso baseado no sucesso ou erro
         cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
         page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
@@ -97,6 +111,7 @@ def main(page: ft.Page):
 
             # Atualiza a tabela com o novo registro!
             atualizar_tabela()
+            atualizar_cards_resumo()
         
         page.update()
 
