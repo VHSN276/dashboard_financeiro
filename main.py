@@ -1,4 +1,7 @@
 import flet as ft
+from datetime import datetime
+# Importe a sua função do banco aqui (ajuste o caminho se necessário)
+from database.operations import adicionar_nova_transacao 
 
 def main(page: ft.Page):
     # 1. Configurações da Janela
@@ -8,16 +11,16 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK 
     page.padding = 30
 
-    # 2. Criando a Seleção de Meses (Baseado no topo do seu desenho)
+    # 2. Criando a Seleção de Meses
     linha_meses = ft.Row(
         controls=[
             ft.TextButton("Mês 1", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
             ft.TextButton("Mês 2", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
-            ft.TextButton("Mês 3", style=ft.ButtonStyle(color=ft.Colors.GREEN_400)), # Exemplo de mês "Ativo"
+            ft.TextButton("Mês 3", style=ft.ButtonStyle(color=ft.Colors.GREEN_400)), 
             ft.TextButton("Mês 4", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
             ft.TextButton("Mês 5", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
         ],
-        scroll=ft.ScrollMode.AUTO, # Permite rolar para o lado se tiverem muitos meses
+        scroll=ft.ScrollMode.AUTO, 
         alignment=ft.MainAxisAlignment.START
     )
 
@@ -27,7 +30,7 @@ def main(page: ft.Page):
             elevation=5,
             content=ft.Container(
                 padding=20,
-                width=260, # Ajustado levemente para caber bem na tela
+                width=260,
                 content=ft.Column([
                     ft.Text(titulo, size=16, weight=ft.FontWeight.W_500, color=cor_texto),
                     ft.Text(f"R$ {valor}", size=28, weight=ft.FontWeight.BOLD)
@@ -44,17 +47,96 @@ def main(page: ft.Page):
         alignment=ft.MainAxisAlignment.SPACE_BETWEEN
     )
 
-    # 4. A Linha de Ações: Botão + NEW e os Filtros (Bolhas)
+
+    # =====================================================================
+    # 4. SESSÃO DO FORMULÁRIO (MODAL) E BANCO DE DADOS
+    # =====================================================================
+    
+    # 4.1 Campos de entrada
+    descricao_input = ft.TextField(label="Descrição", width=300)
+    valor_input = ft.TextField(label="Valor (R$)", width=300, keyboard_type=ft.KeyboardType.NUMBER)
+    data_input = ft.TextField(label="Data (AAAA-MM-DD)", width=300, value=datetime.today().strftime('%Y-%m-%d'))
+    tipo_dropdown = ft.Dropdown(label="Tipo", width=300, options=[ft.dropdown.Option("Receita"), ft.dropdown.Option("Despesa")])
+    categoria_dropdown = ft.Dropdown(label="Categoria", width=300, options=[
+        ft.dropdown.Option(key="1", text="Alimentação"),
+        ft.dropdown.Option(key="2", text="Salário"),
+        ft.dropdown.Option(key="3", text="Moradia"),
+        ft.dropdown.Option(key="4", text="Streaming"),
+    ])
+
+    # 4.2 Lógica dos botões do Modal
+    def fechar_modal(e):
+        modal_novo.open = False
+        page.update()
+
+    def salvar_transacao(e):
+        try:
+            # Substitui vírgula por ponto para o banco aceitar
+            valor_formatado = float(valor_input.value.replace(",", "."))
+            
+            # Envia para o MySQL
+            sucesso = adicionar_nova_transacao(
+                descricao=descricao_input.value,
+                valor=valor_formatado,
+                data=data_input.value,
+                tipo=tipo_dropdown.value,
+                categoria_id=int(categoria_dropdown.value)
+            )
+
+            if sucesso:
+                # Mostra aviso de sucesso
+                page.snack_bar = ft.SnackBar(ft.Text("Transação salva com sucesso!"), bgcolor=ft.Colors.GREEN)
+                page.snack_bar.open = True
+                
+                # Limpa os campos para a próxima
+                descricao_input.value = ""
+                valor_input.value = ""
+                tipo_dropdown.value = None
+                categoria_dropdown.value = None
+                
+                modal_novo.open = False # <-- Ajuste aqui
+                page.update()
+            else:
+                page.snack_bar = ft.SnackBar(ft.Text("Erro ao salvar no banco de dados."), bgcolor=ft.Colors.RED)
+                page.snack_bar.open = True
+                page.update()
+
+        except Exception as erro:
+            # Caso o usuário deixe algo em branco ou digite letras no valor
+            page.snack_bar = ft.SnackBar(ft.Text(f"Erro: Verifique os campos preenchidos. Detalhe: {erro}"), bgcolor=ft.Colors.RED)
+            page.snack_bar.open = True
+            page.update()
+
+    # 4.3 Criação da janela Modal
+    modal_novo = ft.AlertDialog(
+        title=ft.Text("Nova Transação"),
+        content=ft.Column([descricao_input, valor_input, data_input, tipo_dropdown, categoria_dropdown], tight=True),
+        actions=[
+            ft.TextButton("Cancelar", on_click=fechar_modal),
+            ft.ElevatedButton("Salvar", on_click=salvar_transacao, bgcolor=ft.Colors.GREEN_600, color=ft.Colors.WHITE),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    def abrir_modal(e):
+        page.overlay.append(modal_novo) 
+        modal_novo.open = True
+        page.update()
+        
+    # =====================================================================
+
+
+    # 5. A Linha de Ações: Botão + NEW e os Filtros (Bolhas)
     def criar_linha_acoes():
         botao_add = ft.ElevatedButton(
             ft.Text("New", weight=ft.FontWeight.BOLD),
             height=40,
             bgcolor=ft.Colors.GREEN_600,
             color=ft.Colors.WHITE,
-            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)) # Deixa menos arredondado
+            style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
+            on_click=abrir_modal # <-- CONECTAMOS O MODAL AQUI!
         )
         
-        # O ft.Chip é perfeito para desenhar essas pílulas ovais do seu rascunho
         filtros = ft.Row([
             ft.Chip(label=ft.Text("Todos")),
             ft.Chip(label=ft.Text("Fixos")),
@@ -65,13 +147,13 @@ def main(page: ft.Page):
         return ft.Row(
             controls=[botao_add, filtros], 
             alignment=ft.MainAxisAlignment.START, 
-            spacing=30 # Dá um espaço entre o botão e os filtros
+            spacing=30
         )
 
-    # 5. A Tabela de Transações
+    # 6. A Tabela de Transações
     def visualizar_despesas():
         return ft.DataTable(
-            width=float("inf"), # Faz a tabela esticar até o fim da tela
+            width=float("inf"), 
             columns=[
                 ft.DataColumn(ft.Text("Descrição", weight=ft.FontWeight.BOLD)),
                 ft.DataColumn(ft.Text("Categoria", weight=ft.FontWeight.BOLD)),
@@ -79,7 +161,6 @@ def main(page: ft.Page):
                 ft.DataColumn(ft.Text("Valor", weight=ft.FontWeight.BOLD)),
             ],
             rows=[
-                # Linha de exemplo simulando o Spotify do seu caderno
                 ft.DataRow(
                     cells=[
                         ft.DataCell(ft.Text("Spotify")),
@@ -91,19 +172,16 @@ def main(page: ft.Page):
             ],
         )
 
-    # 6. Adicionando tudo na tela (Na ordem exata do seu desenho)
+    # 7. Adicionando tudo na tela
     page.add(
         linha_meses,
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-        
         linha_resumo,
         ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
-        
         criar_linha_acoes(),
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-        
         visualizar_despesas()
     )
 
 if __name__ == "__main__":
-    ft.run(main) # Atualizado para o comando moderno do Flet
+    ft.run(main)

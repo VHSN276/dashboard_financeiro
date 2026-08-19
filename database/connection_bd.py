@@ -1,6 +1,6 @@
 import mysql.connector
 from mysql.connector import Error
-from user_crendences import user
+from database.user_crendences import user
 #config do banco
 DB_CONFIG = {
     "host": "localhost",
