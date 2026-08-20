@@ -2,7 +2,7 @@ import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
 from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao
+from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao
 def main(page: ft.Page):
     # 1. Configurações da Janela
     page.title = "Controle Financeiro"
@@ -10,6 +10,8 @@ def main(page: ft.Page):
     page.window_height = 700
     page.theme_mode = ft.ThemeMode.DARK 
     page.padding = 30
+
+    estado_app = {"id_edicao": None}
 
     # 2. Criando a Seleção de Meses
     linha_meses = ft.Row(
@@ -88,28 +90,33 @@ def main(page: ft.Page):
     atualizar_cards_resumo()
 
     def salvar_transacao(e):
-        # Envia tudo como texto para o Controlador decidir o que fazer
-        sucesso, mensagem = processar_nova_transacao(
-            descricao=descricao_input.value,
-            valor_str=valor_input.value,
-            data=data_input.value,
-            tipo=tipo_dropdown.value,
-            categoria_id_str=categoria_dropdown.value
-        )
-        # Configura a cor do aviso baseado no sucesso ou erro
+        id_atual = estado_app["id_edicao"]
+        
+        # Se for None, é transação nova. Se tiver ID, é edição!
+        if id_atual is None:
+            sucesso, mensagem = processar_nova_transacao(
+                descricao=descricao_input.value,
+                valor_str=valor_input.value,
+                data=data_input.value,
+                tipo=tipo_dropdown.value,
+                categoria_id_str=categoria_dropdown.value
+            )
+        else:
+            sucesso, mensagem = processar_edicao(
+                id_transacao=id_atual,
+                descricao=descricao_input.value,
+                valor_str=valor_input.value,
+                data=data_input.value,
+                tipo=tipo_dropdown.value,
+                categoria_id_str=categoria_dropdown.value
+            )
+
         cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
         page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
         page.snack_bar.open = True
 
-        # Se deu certo, limpa os campos e fecha o modal
         if sucesso:
-            descricao_input.value = ""
-            valor_input.value = ""
-            tipo_dropdown.value = None
-            categoria_dropdown.value = None
             modal_novo.open = False
-
-            # Atualiza a tabela com o novo registro!
             atualizar_tabela()
             atualizar_cards_resumo()
         
@@ -127,12 +134,42 @@ def main(page: ft.Page):
     )
 
     def abrir_modal(e):
+        estado_app["id_edicao"] = None # Garante que é modo de CRIAÇÃO
+        modal_novo.title = ft.Text("Nova Transação")
+        
+        # Limpa os campos
+        descricao_input.value = ""
+        valor_input.value = ""
+        # Definindo a data de hoje como padrão para novos registros!
+        data_input.value = datetime.today().strftime('%Y-%m-%d')
+        tipo_dropdown.value = ""
+        categoria_dropdown.value = ""
+        
+        # 3. Abre o modal
         modal_novo.open = True
         page.update()
 
     def fechar_modal(e):
         modal_novo.open = False
         page.update()
+
+    def clicar_lapis(e):
+        # Captura todos os dados da linha clicada
+        dados = e.control.data 
+        
+        # Muda o estado para modo de EDIÇÃO e troca o título do modal
+        estado_app["id_edicao"] = dados["id"]
+        modal_novo.title = ft.Text("Editar Transação")
+        
+        # Preenche os campos com os valores puros que guardamos no Controller
+        descricao_input.value = dados["descricao"]
+        valor_input.value = dados["valor_puro"]
+        data_input.value = dados["data"]
+        tipo_dropdown.value = dados["tipo_puro"]
+        categoria_dropdown.value = dados["categoria_id"]
+        
+        modal_novo.open = True
+        page.update(),
         
     # =====================================================================
 
@@ -210,6 +247,17 @@ def main(page: ft.Page):
                 on_click=clicar_lixeira
             )
 
+            # NOVO: Botão de Lápis
+            btn_editar = ft.IconButton(
+                icon=ft.Icons.EDIT_OUTLINED,
+                icon_color=ft.Colors.BLUE_400,
+                data=t, # <-- Passamos o DICIONÁRIO INTEIRO para o botão!
+                on_click=clicar_lapis
+            )
+
+            # Agrupa os dois botões na mesma célula
+            acoes = ft.Row([btn_editar, btn_excluir], spacing=0)
+
             tabela_despesas.rows.append(
                 ft.DataRow(
                     cells=[
@@ -217,7 +265,7 @@ def main(page: ft.Page):
                         ft.DataCell(ft.Text(t["categoria"])),
                         ft.DataCell(ft.Text(t["data"])),
                         ft.DataCell(ft.Text(t["valor_texto"], color=cor_texto)),
-                        ft.DataCell(btn_excluir),
+                        ft.DataCell(acoes),
                     ]
                 )
             )

@@ -18,22 +18,18 @@ def adicionar_nova_transacao(descricao, valor, data, tipo, categoria_id):
     return False
 
 def listar_transacoes():
-    """Model: Busca as transações cruzando com a tabela de categorias para pegar o nome."""
     conn = get_connection()
     if conn:
         cursor = conn.cursor()
-        
-        # ATENÇÃO: Adicionamos o 't.id' logo no começo do SELECT!
+        # Adicionamos o t.categoria_id no final da lista!
         query = """
-            SELECT t.id, t.descricao, c.nome, t.data, t.valor, t.tipo 
+            SELECT t.id, t.descricao, c.nome, t.data, t.valor, t.tipo, t.categoria_id 
             FROM finance_db.transacoes t
             JOIN finance_db.categorias c ON t.categoria_id = c.id
             ORDER BY t.data DESC
         """
-        
         cursor.execute(query)
         linhas = cursor.fetchall()
-        
         cursor.close()
         conn.close()
         return linhas
@@ -74,6 +70,25 @@ def deletar_transacao_db(id_transacao):
     if conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM finance_db.transacoes WHERE id = %s", (id_transacao,))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        return True
+    return False
+
+def atualizar_transacao_db(id_transacao, descricao, valor, data, tipo, categoria_id):
+    """Model: Atualiza uma transação existente."""
+    conn = get_connection()
+    if conn:
+        cursor = conn.cursor()
+        query = """
+            UPDATE finance_db.transacoes 
+            SET descricao = %s, valor = %s, data = %s, tipo = %s, categoria_id = %s
+            WHERE id = %s
+        """
+        # A ordem dos valores tem que bater exatamente com os %s da query acima
+        cursor.execute(query, (descricao, valor, data, tipo, categoria_id, id_transacao))
         conn.commit()
         
         cursor.close()
