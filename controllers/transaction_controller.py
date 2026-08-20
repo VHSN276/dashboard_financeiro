@@ -27,13 +27,20 @@ def processar_nova_transacao(descricao, valor_str, data, tipo, categoria_id_str)
     except Exception as e:
         return False, f"Erro inesperado: {str(e)}"
 
-def obter_transacoes_formatadas():
+def obter_transacoes_formatadas(filtros_ativos=None):
+    if filtros_ativos is None:
+        filtros_ativos = []
+
     transacoes_brutas = listar_transacoes()
     transacoes_prontas = []
     
     for t in transacoes_brutas:
-        # Agora desempacotamos 7 itens (o categoria_id é o t[6])
         id_transacao, descricao, categoria_nome, data, valor, tipo, categoria_id = t
+
+        # A MÁGICA DO MULTI-SELECT:
+        # Se tem algo na lista de filtros E a categoria não está lá dentro, ignoramos essa linha!
+        if len(filtros_ativos) > 0 and categoria_nome not in filtros_ativos:
+            continue
         
         eh_despesa = (tipo == "Despesa" or tipo == "DESPESA") 
         sinal = "-" if eh_despesa else "+"
@@ -68,34 +75,49 @@ def obter_opcoes_categorias():
         
     return opcoes
 
-def obter_resumo_financeiro():
-    """
-    Controller: Calcula os totais de ganhos, gastos e o saldo restante.
-    Retorna uma tupla com os três valores formatados em texto.
-    """
-    transacoes = listar_transacoes() # Reutilizamos a função do Model!
-    
+def obter_resumo_financeiro(filtros_ativos=None):
+    if filtros_ativos is None:
+        filtros_ativos = []
+        
+    transacoes_brutas = listar_transacoes()
     total_ganhos = 0.0
     total_gastos = 0.0
     
-    for t in transacoes:
-        valor = float(t[4]) # A posição 4 é o valor
-        tipo = t[5].upper() # A posição 5 é o tipo (Receita/Despesa)
+    # Criamos dois 'conjuntos' (sets) para guardar os nomes sem repeti-los
+    nomes_ganhos = set()
+    nomes_gastos = set()
+    
+    for t in transacoes_brutas:
+        categoria_nome = t[2]
+        valor = float(t[4])
+        tipo = t[5].upper()
         
-        if tipo == "RECEITA":
+        # Se a categoria está marcada no filtro, nós descobrimos de qual lado ela é!
+        if categoria_nome in filtros_ativos:
+            if tipo == "RECEITA" or tipo == "GANHO": # Ajuste para a palavra exata do seu banco
+                nomes_ganhos.add(categoria_nome)
+            else:
+                nomes_gastos.add(categoria_nome)
+                
+        # Continua a lógica matemática normal
+        if len(filtros_ativos) > 0 and categoria_nome not in filtros_ativos:
+            continue
+            
+        if tipo == "RECEITA" or tipo == "GANHO":
             total_ganhos += valor
         else:
             total_gastos += valor
             
-    saldo_restante = total_ganhos - total_gastos
+    restante = total_ganhos - total_gastos
     
-    # Formata para o padrão brasileiro (ex: 1200.50 -> 1.200,50)
-    # Como formatação complexa de moeda pode ser chata no Python, vamos fazer uma formatação simples
-    ganhos_str = f"R$ {total_ganhos:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    gastos_str = f"R$ {total_gastos:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    restante_str = f"R$ {saldo_restante:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    
-    return ganhos_str, gastos_str, restante_str
+    # Agora a função devolve 5 coisas! Os 3 valores, e as 2 listas de nomes.
+    return (
+        f"R$ {total_ganhos:,.2f}", 
+        f"R$ {total_gastos:,.2f}", 
+        f"R$ {restante:,.2f}",
+        list(nomes_ganhos), 
+        list(nomes_gastos)
+    )
 
 def processar_exclusao(id_transacao):
     """Controller: Pede ao Model para apagar e retorna o status."""

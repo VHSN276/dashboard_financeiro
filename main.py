@@ -11,7 +11,10 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.DARK 
     page.padding = 30
 
-    estado_app = {"id_edicao": None}
+    estado_app = {
+        "id_edicao": None,
+        "filtros_ativos": [] # <-- Mudamos para uma lista!
+    }
 
     # 2. Criando a Seleção de Meses
     linha_meses = ft.Row(
@@ -27,26 +30,34 @@ def main(page: ft.Page):
     )
 
     # 3. Criando os Cards de Resumo
-    # Transformamos os textos em variáveis globais da tela para podermos atualizá-los
     texto_ganhos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
     texto_gastos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
     texto_restante = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
+    
+    # Transformamos o Ganhos em variável dinâmica também!
+    titulo_ganhos = ft.Text("Ganhos", size=16, weight=ft.FontWeight.W_500, color=ft.Colors.GREEN_400, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+    titulo_gastos = ft.Text("Gastos", size=16, weight=ft.FontWeight.W_500, color=ft.Colors.RED_400, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
 
-    def criar_card(titulo, texto_dinamico, cor_texto):
+    def criar_card(titulo_dinamico, texto_dinamico, cor_texto):
+        # Se você passar um texto simples (string), ele cria o componente na hora
+        if isinstance(titulo_dinamico, str):
+            titulo_dinamico = ft.Text(titulo_dinamico, size=16, weight=ft.FontWeight.W_500, color=cor_texto)
+            
         return ft.Card(
             elevation=5,
             content=ft.Container(
                 padding=20,
                 width=260,
                 content=ft.Column([
-                    ft.Text(titulo, size=16, weight=ft.FontWeight.W_500, color=cor_texto),
-                    texto_dinamico # Injeta a variável de texto aqui
+                    titulo_dinamico, # Agora recebe a variável aqui!
+                    texto_dinamico 
                 ])
             )
         )
 
-    card_ganhos = criar_card("Ganhos", texto_ganhos, ft.Colors.GREEN_400)
-    card_gastos = criar_card("Gastos", texto_gastos, ft.Colors.RED_400)
+    card_ganhos = criar_card(titulo_ganhos, texto_ganhos, ft.Colors.GREEN_400)
+    # Aqui a gente passa a nova variável para o card de Gastos!
+    card_gastos = criar_card(titulo_gastos, texto_gastos, ft.Colors.RED_400) 
     card_restante = criar_card("Restante", texto_restante, ft.Colors.BLUE_400)
 
     linha_resumo = ft.Row(
@@ -78,12 +89,27 @@ def main(page: ft.Page):
         page.update()
 
     def atualizar_cards_resumo():
-        ganhos, gastos, restante = obter_resumo_financeiro()
+        filtros = estado_app["filtros_ativos"]
+        
+        # Agora recebemos os 5 itens que o controlador mandou!
+        ganhos, gastos, restante, nomes_ganhos, nomes_gastos = obter_resumo_financeiro(filtros)
         
         texto_ganhos.value = ganhos
         texto_gastos.value = gastos
         texto_restante.value = restante
         
+        # Regra para o título de Ganhos
+        if len(nomes_ganhos) > 0:
+            titulo_ganhos.value = f"Ganhos ({'/'.join(nomes_ganhos)})"
+        else:
+            titulo_ganhos.value = "Ganhos"
+
+        # Regra para o título de Gastos
+        if len(nomes_gastos) > 0:
+            titulo_gastos.value = f"Gastos ({'/'.join(nomes_gastos)})"
+        else:
+            titulo_gastos.value = "Gastos"
+            
         page.update()
         
     # Chama a função para carregar os números ao abrir o app
@@ -173,6 +199,29 @@ def main(page: ft.Page):
         
     # =====================================================================
 
+    def clicar_filtro(e):
+        nome_filtro = e.control.label.value
+        
+        # Converte qualquer coisa que o Flet mandar (True, "True", "true") para texto minúsculo
+        foi_selecionado = (str(e.data).lower() == "true")
+        
+        # 1. Garante que a bolha mude de cor visualmente
+        e.control.selected = foi_selecionado
+        e.control.update()
+        
+        # 2. Atualiza a nossa lista de forma segura
+        if foi_selecionado:
+            if nome_filtro not in estado_app["filtros_ativos"]:
+                estado_app["filtros_ativos"].append(nome_filtro)
+        else:
+            if nome_filtro in estado_app["filtros_ativos"]:
+                estado_app["filtros_ativos"].remove(nome_filtro)
+        
+        # 3. PRINT DE DEBUG: Vai aparecer no seu terminal (VS Code, CMD, etc)
+        print(f"Filtros clicados agora: {estado_app['filtros_ativos']}")
+        
+        atualizar_tabela()
+        atualizar_cards_resumo()
 
     # 5. A Linha de Ações: Botão + NEW e os Filtros (Bolhas)
     def criar_linha_acoes():
@@ -184,13 +233,24 @@ def main(page: ft.Page):
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
             on_click=abrir_modal # <-- CONECTAMOS O MODAL AQUI!
         )
-        
-        filtros = ft.Row([
-            ft.Chip(label=ft.Text("Todos")),
-            ft.Chip(label=ft.Text("Fixos")),
-            ft.Chip(label=ft.Text("Lazer")),
-            ft.Chip(label=ft.Text("Streamings")),
-        ])
+
+        # 1. Puxa as categorias do banco (reaproveitando o Controller!)
+        lista_categorias_db = obter_opcoes_categorias()
+
+        # 2. A lista começa VAZIA (sem o chip "Todos")
+        chips_filtros = []
+
+        # 3. Adiciona as categorias
+        for cat in lista_categorias_db:
+            chips_filtros.append(
+                ft.Chip(label=ft.Text(cat["text"]), on_select=clicar_filtro, selected_color=ft.Colors.GREEN_600)
+            )
+
+        # 4. Coloca os chips numa Row (com scroll, caso você tenha muitas categorias!)
+        filtros = ft.Row(
+            controls=chips_filtros, 
+            scroll=ft.ScrollMode.AUTO
+        )
         
         return ft.Row(
             controls=[botao_add, filtros], 
@@ -233,7 +293,9 @@ def main(page: ft.Page):
     def atualizar_tabela():
         """Pede os dados ao Controller e recria as linhas da tabela."""
         tabela_despesas.rows.clear()
-        transacoes = obter_transacoes_formatadas()
+        # Agora passamos o filtro que está salvo no estado!
+        filtros = estado_app["filtros_ativos"]
+        transacoes = obter_transacoes_formatadas(filtros)
         
         for t in transacoes:
             # Define a cor baseada no tipo (Despesa = Vermelho, Receita = Verde)
@@ -280,6 +342,7 @@ def main(page: ft.Page):
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
         linha_resumo,
         ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
+        
         criar_linha_acoes(),
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
         tabela_despesas
