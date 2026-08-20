@@ -1,4 +1,4 @@
-from database.operations import adicionar_nova_transacao, listar_transacoes, listar_categorias
+from database.operations import adicionar_nova_transacao, listar_transacoes, listar_categorias, deletar_transacao_db
 
 def processar_nova_transacao(descricao, valor_str, data, tipo, categoria_id_str):
     """
@@ -36,13 +36,14 @@ def obter_transacoes_formatadas():
     
     for t in transacoes_brutas:
         # ATENÇÃO AQUI: Mudamos 'categoria_id' para 'categoria_nome'
-        descricao, categoria_nome, data, valor, tipo = t
+        id_transacao, descricao, categoria_nome, data, valor, tipo = t
         
         eh_despesa = (tipo == "Despesa" or tipo == "DESPESA") # Garantindo que pegue maiúsculo ou minúsculo
         sinal = "-" if eh_despesa else "+"
         valor_texto = f"{sinal} R$ {valor:.2f}"
         
         transacoes_prontas.append({
+            "id": id_transacao, # Guardamos o ID aqui para o Flet usar depois!
             "descricao": descricao,
             "categoria": categoria_nome, # Passamos o texto direto para a tela!
             "data": str(data),
@@ -77,8 +78,8 @@ def obter_resumo_financeiro():
     total_gastos = 0.0
     
     for t in transacoes:
-        valor = float(t[3]) # A posição 3 é o valor
-        tipo = t[4].upper() # A posição 4 é o tipo (Receita/Despesa)
+        valor = float(t[4]) # A posição 4 é o valor
+        tipo = t[5].upper() # A posição 5 é o tipo (Receita/Despesa)
         
         if tipo == "RECEITA":
             total_ganhos += valor
@@ -94,3 +95,10 @@ def obter_resumo_financeiro():
     restante_str = f"R$ {saldo_restante:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     
     return ganhos_str, gastos_str, restante_str
+
+def processar_exclusao(id_transacao):
+    """Controller: Pede ao Model para apagar e retorna o status."""
+    sucesso = deletar_transacao_db(id_transacao)
+    if sucesso:
+        return True, "Transação apagada com sucesso!"
+    return False, "Erro ao tentar apagar a transação."

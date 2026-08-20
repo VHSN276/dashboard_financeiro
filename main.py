@@ -2,7 +2,7 @@ import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
 from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro
+from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao
 def main(page: ft.Page):
     # 1. Configurações da Janela
     page.title = "Controle Financeiro"
@@ -170,20 +170,46 @@ def main(page: ft.Page):
             ft.DataColumn(ft.Text("Categoria", weight=ft.FontWeight.BOLD)),
             ft.DataColumn(ft.Text("Data", weight=ft.FontWeight.BOLD)),
             ft.DataColumn(ft.Text("Valor", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Ações", weight=ft.FontWeight.BOLD)),
         ],
         rows=[] # Começa vazia
     )
 
+    def clicar_lixeira(e):
+        # O ID da transação estará guardado na propriedade 'data' do botão
+        id_para_apagar = e.control.data 
+        
+        sucesso, mensagem = processar_exclusao(id_para_apagar)
+        
+        # Mostra o aviso
+        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
+        page.snack_bar.open = True
+        
+        # Se deu certo, atualiza tudo!
+        if sucesso:
+            atualizar_tabela()
+            atualizar_cards_resumo()
+        
+        page.update()
+
     def atualizar_tabela():
         """Pede os dados ao Controller e recria as linhas da tabela."""
         tabela_despesas.rows.clear()
-        
         transacoes = obter_transacoes_formatadas()
         
         for t in transacoes:
             # Define a cor baseada no tipo (Despesa = Vermelho, Receita = Verde)
             cor_texto = ft.Colors.RED_400 if t["eh_despesa"] else ft.Colors.GREEN_400
-            
+
+            # Criamos o botão da lixeira, guardando o ID no parâmetro 'data'
+            btn_excluir = ft.IconButton(
+                icon=ft.Icons.DELETE_OUTLINE, 
+                icon_color=ft.Colors.RED_400,
+                data=t["id"], # <-- O Flet esconde o ID aqui dentro!
+                on_click=clicar_lixeira
+            )
+
             tabela_despesas.rows.append(
                 ft.DataRow(
                     cells=[
@@ -191,6 +217,7 @@ def main(page: ft.Page):
                         ft.DataCell(ft.Text(t["categoria"])),
                         ft.DataCell(ft.Text(t["data"])),
                         ft.DataCell(ft.Text(t["valor_texto"], color=cor_texto)),
+                        ft.DataCell(btn_excluir),
                     ]
                 )
             )

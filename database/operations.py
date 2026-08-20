@@ -23,9 +23,9 @@ def listar_transacoes():
     if conn:
         cursor = conn.cursor()
         
-        # O JOIN conecta 't' (transacoes) e 'c' (categorias) através do categoria_id
+        # ATENÇÃO: Adicionamos o 't.id' logo no começo do SELECT!
         query = """
-            SELECT t.descricao, c.nome, t.data, t.valor, t.tipo 
+            SELECT t.id, t.descricao, c.nome, t.data, t.valor, t.tipo 
             FROM finance_db.transacoes t
             JOIN finance_db.categorias c ON t.categoria_id = c.id
             ORDER BY t.data DESC
@@ -67,3 +67,16 @@ def obter_saldo_atual():
         # Retorna o saldo (ou 0 se for None)
         return resultado[0] if resultado[0] else 0
     return 0
+
+def deletar_transacao_db(id_transacao):
+    """Model: Apaga uma transação específica pelo ID."""
+    conn = get_connection()
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM finance_db.transacoes WHERE id = %s", (id_transacao,))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        return True
+    return False
