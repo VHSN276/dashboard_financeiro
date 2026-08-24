@@ -27,15 +27,22 @@ def processar_nova_transacao(descricao, valor_str, data, tipo, categoria_id_str)
     except Exception as e:
         return False, f"Erro inesperado: {str(e)}"
 
-def obter_transacoes_formatadas(filtros_ativos=None):
+def obter_transacoes_formatadas(filtros_ativos=None, mes_filtro=None):
     if filtros_ativos is None:
         filtros_ativos = []
+
+    if mes_filtro is None:
+        mes_filtro = ""
 
     transacoes_brutas = listar_transacoes()
     transacoes_prontas = []
     
     for t in transacoes_brutas:
         id_transacao, descricao, categoria_nome, data, valor, tipo, categoria_id = t
+        data_transacao = str(data)[:7]  # Pega a data e corta para "YYYY-MM"
+
+        if mes_filtro and data_transacao != mes_filtro:
+            continue
 
         # A MÁGICA DO MULTI-SELECT:
         # Se tem algo na lista de filtros E a categoria não está lá dentro, ignoramos essa linha!
@@ -75,10 +82,13 @@ def obter_opcoes_categorias():
         
     return opcoes
 
-def obter_resumo_financeiro(filtros_ativos=None):
+def obter_resumo_financeiro(filtros_ativos=None, mes_filtro=None):
     if filtros_ativos is None:
         filtros_ativos = []
-        
+
+    if mes_filtro is None:
+        mes_filtro = ""
+
     transacoes_brutas = listar_transacoes()
     total_ganhos = 0.0
     total_gastos = 0.0
@@ -88,10 +98,16 @@ def obter_resumo_financeiro(filtros_ativos=None):
     nomes_gastos = set()
     
     for t in transacoes_brutas:
+        # Pega a data e corta para "YYYY-MM"
+        data_transacao = str(t[3])[:7]
         categoria_nome = t[2]
         valor = float(t[4])
         tipo = t[5].upper()
-        
+
+        # Se o filtro de mês está ativo, ignoramos transações de outros meses
+        if mes_filtro and data_transacao != mes_filtro:
+            continue
+
         # Se a categoria está marcada no filtro, nós descobrimos de qual lado ela é!
         if categoria_nome in filtros_ativos:
             if tipo == "RECEITA" or tipo == "GANHO": # Ajuste para a palavra exata do seu banco
@@ -145,3 +161,16 @@ def processar_edicao(id_transacao, descricao, valor_str, data, tipo, categoria_i
         return False, "Valor inválido. Digite apenas números."
     except Exception as e:
         return False, f"Erro inesperado: {str(e)}"
+
+def obter_meses_disponiveis():
+    """Lê todas as transações e retorna uma lista de meses únicos (Ano-Mês)."""
+    transacoes = listar_transacoes()
+    meses = set()
+    
+    for t in transacoes:
+        data_str = str(t[3]) # Pega a data (ex: "2026-08-20")
+        mes_ano = data_str[:7] # Corta para pegar apenas "2026-08"
+        meses.add(mes_ano)
+        
+    # Retorna a lista ordenada do mais recente para o mais antigo
+    return sorted(list(meses), reverse=True)

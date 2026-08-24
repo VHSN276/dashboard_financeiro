@@ -2,7 +2,7 @@ import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
 from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao
+from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao, obter_meses_disponiveis
 def main(page: ft.Page):
     # 1. Configurações da Janela
     page.title = "Controle Financeiro"
@@ -13,21 +13,91 @@ def main(page: ft.Page):
 
     estado_app = {
         "id_edicao": None,
-        "filtros_ativos": [] # <-- Mudamos para uma lista!
+        "filtros_ativos": [], # <-- Mudamos para uma lista!
+        "mes_atual": None
     }
 
     # 2. Criando a Seleção de Meses
-    linha_meses = ft.Row(
-        controls=[
-            ft.TextButton("Mês 1", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
-            ft.TextButton("Mês 2", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
-            ft.TextButton("Mês 3", style=ft.ButtonStyle(color=ft.Colors.GREEN_400)), 
-            ft.TextButton("Mês 4", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
-            ft.TextButton("Mês 5", style=ft.ButtonStyle(color=ft.Colors.WHITE54)),
+    # A lista vazia onde os meses vão entrar depois
+    # Campo de texto para o nome do mês
+    nome_mes_input = ft.TextField(label="Nome do Mês (Ex: 2026-08)", width=300)
+
+    def abrir_modal_mes(e):
+        nome_mes_input.value = ""
+        nome_mes_input.update()
+        modal_mes.open = True
+        page.update()
+
+    def fechar_modal_mes(e):
+        modal_mes.open = False
+        page.update()
+
+    def salvar_novo_mes(e):
+        # Aqui você vai chamar a sua função do banco de dados no futuro!
+        # Ex: salvar_mes_no_banco(nome_mes_input.value)
+        
+        page.snack_bar = ft.SnackBar(ft.Text("Mês adicionado com sucesso!"), bgcolor=ft.Colors.GREEN)
+        page.snack_bar.open = True
+        
+        fechar_modal_mes(e)
+        # atualizar_linha_meses() # Atualiza a tela depois
+
+    # O modal novinho em folha
+    modal_mes = ft.AlertDialog(
+        title=ft.Text("Novo Mês"),
+        content=ft.Column([nome_mes_input], tight=True),
+        actions=[
+            ft.TextButton("Cancelar", on_click=fechar_modal_mes),
+            ft.ElevatedButton("Salvar", on_click=salvar_novo_mes, bgcolor=ft.Colors.GREEN_600, color=ft.Colors.WHITE),
         ],
-        scroll=ft.ScrollMode.AUTO, 
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+
+    linha_meses = ft.Row(scroll=ft.ScrollMode.AUTO, alignment=ft.MainAxisAlignment.START)
+
+    # O novo botão de criar mês
+    btn_novo_mes = ft.ElevatedButton(
+        content="+ Mês",
+        bgcolor=ft.Colors.GREEN_600,
+        color=ft.Colors.WHITE,
+        on_click=abrir_modal_mes # Chama o modal que acabamos de criar!
+    )
+
+    # Juntamos o botão e a lista na mesma linha
+    barra_superior_meses = ft.Row(
+        controls=[btn_novo_mes, linha_meses],
         alignment=ft.MainAxisAlignment.START
     )
+
+    def clicar_mes(e):
+        # Atualiza a memória com o mês clicado
+        estado_app["mes_atual"] = e.control.data
+        atualizar_linha_meses()
+        atualizar_tabela()
+        atualizar_cards_resumo()
+
+    def atualizar_linha_meses():
+        linha_meses.controls.clear()
+        meses_db = obter_meses_disponiveis()
+        
+        # Se não tiver mês selecionado, seleciona o mais recente por padrão
+        if estado_app["mes_atual"] is None and len(meses_db) > 0:
+            estado_app["mes_atual"] = meses_db[0]
+            
+        for mes in meses_db:
+            eh_selecionado = (mes == estado_app["mes_atual"])
+            cor = ft.Colors.GREEN_400 if eh_selecionado else ft.Colors.WHITE54
+            
+            botao = ft.TextButton(
+                content = mes, # Exibe "2026-08"
+                data=mes, # Guarda "2026-08" na memória do botão
+                style=ft.ButtonStyle(color=cor),
+                on_click=clicar_mes
+            )
+            linha_meses.controls.append(botao)
+            
+        page.update()
 
     # 3. Criando os Cards de Resumo
     texto_ganhos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
@@ -68,7 +138,9 @@ def main(page: ft.Page):
     # =====================================================================
     # 4. SESSÃO DO FORMULÁRIO (MODAL) E BANCO DE DADOS
     # =====================================================================
-    
+
+
+
     # 4.1 Campos de entrada
     descricao_input = ft.TextField(label="Descrição", width=300)
     valor_input = ft.TextField(label="Valor (R$)", width=300, keyboard_type=ft.KeyboardType.NUMBER)
@@ -90,9 +162,10 @@ def main(page: ft.Page):
 
     def atualizar_cards_resumo():
         filtros = estado_app["filtros_ativos"]
+        mes = estado_app["mes_atual"]
         
         # Agora recebemos os 5 itens que o controlador mandou!
-        ganhos, gastos, restante, nomes_ganhos, nomes_gastos = obter_resumo_financeiro(filtros)
+        ganhos, gastos, restante, nomes_ganhos, nomes_gastos = obter_resumo_financeiro(filtros, mes)
         
         texto_ganhos.value = ganhos
         texto_gastos.value = gastos
@@ -295,7 +368,8 @@ def main(page: ft.Page):
         tabela_despesas.rows.clear()
         # Agora passamos o filtro que está salvo no estado!
         filtros = estado_app["filtros_ativos"]
-        transacoes = obter_transacoes_formatadas(filtros)
+        mes = estado_app["mes_atual"]
+        transacoes = obter_transacoes_formatadas(filtros, mes)
         
         for t in transacoes:
             # Define a cor baseada no tipo (Despesa = Vermelho, Receita = Verde)
@@ -338,7 +412,7 @@ def main(page: ft.Page):
 
     # 7. Adicionando tudo na tela
     page.add(
-        linha_meses,
+        barra_superior_meses,
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
         linha_resumo,
         ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
@@ -350,8 +424,10 @@ def main(page: ft.Page):
 
     # CADASTRA O MODAL AQUI (Garante que ele exista na tela, mas invisível)
     page.overlay.append(modal_novo)
+    page.overlay.append(modal_mes)
 
     # Atualizações iniciais
+    atualizar_linha_meses()
     atualizar_tabela()
     atualizar_cards_resumo()
 
