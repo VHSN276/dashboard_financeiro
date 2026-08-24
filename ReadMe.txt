@@ -1,5 +1,5 @@
 To make sure that the applicattion will open without problem,
-install these pré requisites, follow these steps:
+install these pre-requisites, follow these steps:
 - python3 -m venv venv
 - source venv/bin/activate
 - pip install flet mysql-connector-python flet-desktop==0.86.5
