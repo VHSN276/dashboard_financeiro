@@ -1,4 +1,4 @@
-from database.operations import adicionar_nova_transacao, listar_transacoes, listar_categorias, deletar_transacao_db, atualizar_transacao_db
+from database.operations import adicionar_nova_transacao, listar_transacoes, listar_categorias, deletar_transacao_db, atualizar_transacao_db, adicionar_mes, listar_meses
 
 def processar_nova_transacao(descricao, valor_str, data, tipo, categoria_id_str):
     """
@@ -163,14 +163,42 @@ def processar_edicao(id_transacao, descricao, valor_str, data, tipo, categoria_i
         return False, f"Erro inesperado: {str(e)}"
 
 def obter_meses_disponiveis():
-    """Lê todas as transações e retorna uma lista de meses únicos (Ano-Mês)."""
-    transacoes = listar_transacoes()
-    meses = set()
+    """Lê os meses do banco e retorna em ordem cronológica real."""
+    meses_brutos = listar_meses()
+    meses_nomes = [mes[1] for mes in meses_brutos]
     
-    for t in transacoes:
-        data_str = str(t[3]) # Pega a data (ex: "2026-08-20")
-        mes_ano = data_str[:7] # Corta para pegar apenas "2026-08"
-        meses.add(mes_ano)
+    # 1. Criamos um "gabarito" ensinando a ordem correta para o Python
+    ordem_meses = {
+        "Janeiro": 1, 
+        "Fevereiro": 2, 
+        "Março": 3, 
+        "Abril": 4,
+        "Maio": 5, 
+        "Junho": 6, 
+        "Julho": 7, 
+        "Agosto": 8,
+        "Setembro": 9, 
+        "Outubro": 10, 
+        "Novembro": 11, 
+        "Dezembro": 12
+    }
+    
+    # 2. Ensinamos a função sorted a usar o nosso gabarito
+    # Se o usuário digitar algo diferente (ex: "Ano Todo"), jogamos para o final (peso 99)
+    meses_ordenados = sorted(meses_nomes, key=lambda mes: ordem_meses.get(mes, 99))
+    
+    return meses_ordenados
+
+def processar_novo_mes(nome_mes):
+    """Regra de negócio para salvar o mês."""
+    if not nome_mes.strip():
+        return False, "O nome do mês não pode estar vazio."
         
-    # Retorna a lista ordenada do mais recente para o mais antigo
-    return sorted(list(meses), reverse=True)
+    try:
+        sucesso = adicionar_mes(nome_mes)
+        if sucesso:
+            return True, "Mês adicionado com sucesso!"
+        return False, "Erro ao salvar no banco."
+    except Exception as e:
+        # Se você tentar cadastrar '2026-08' duas vezes, o MySQL vai dar erro por causa do UNIQUE
+        return False, "Este mês já está cadastrado!"

@@ -17,6 +17,19 @@ def adicionar_nova_transacao(descricao, valor, data, tipo, categoria_id):
         return True
     return False
 
+def adicionar_mes(nome_mes):
+    """Model: Adiciona um novo mês no banco de dados."""
+    conn = get_connection()
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO finance_db.meses (nome) VALUES (%s)", (nome_mes,))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        return True
+    return False
+
 def listar_transacoes():
     conn = get_connection()
     if conn:
@@ -30,6 +43,19 @@ def listar_transacoes():
         """
         cursor.execute(query)
         linhas = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return linhas
+    return []
+
+def listar_meses():
+    """Model: Busca todos os meses disponíveis no banco."""
+    conn = get_connection()
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, nome FROM finance_db.meses ORDER BY nome ASC")
+        linhas = cursor.fetchall()
+        
         cursor.close()
         conn.close()
         return linhas

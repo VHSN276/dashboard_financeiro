@@ -2,7 +2,7 @@ import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
 from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao, obter_meses_disponiveis
+from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao, obter_meses_disponiveis, processar_novo_mes
 def main(page: ft.Page):
     # 1. Configurações da Janela
     page.title = "Controle Financeiro"
@@ -14,13 +14,42 @@ def main(page: ft.Page):
     estado_app = {
         "id_edicao": None,
         "filtros_ativos": [], # <-- Mudamos para uma lista!
-        "mes_atual": None
+        "mes_atual": None,
+        "mes_alvo_opcoes": None # <-- Nova variável!
     }
 
     # 2. Criando a Seleção de Meses
     # A lista vazia onde os meses vão entrar depois
     # Campo de texto para o nome do mês
     nome_mes_input = ft.TextField(label="Nome do Mês (Ex: 2026-08)", width=300)
+
+    # Funções dos botões do novo modal
+    def fechar_opcoes_mes(e):
+        modal_opcoes_mes.open = False
+        page.update()
+
+    def acao_editar_mes(e):
+        mes = estado_app["mes_alvo_opcoes"]
+        fechar_opcoes_mes(e)
+        print(f"Pronto para editar: {mes}")
+        # Aqui depois chamaremos o modal de edição!
+
+    def acao_excluir_mes(e):
+        mes = estado_app["mes_alvo_opcoes"]
+        fechar_opcoes_mes(e)
+        print(f"Pronto para excluir: {mes}")
+        # Aqui depois chamaremos a exclusão no banco!
+
+    # O modal de opções
+    modal_opcoes_mes = ft.AlertDialog(
+        title=ft.Text("Opções do Mês"), # Esse texto vai mudar dinamicamente
+        content=ft.Column([
+            ft.ElevatedButton("Editar Mês", on_click=acao_editar_mes, icon=ft.Icons.EDIT, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, width=200),
+            ft.ElevatedButton("Excluir Mês", on_click=acao_excluir_mes, icon=ft.Icons.DELETE, bgcolor=ft.Colors.RED_600, color=ft.Colors.WHITE, width=200),
+        ], tight=True),
+        actions=[ft.TextButton("Cancelar", on_click=fechar_opcoes_mes)],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
 
     def abrir_modal_mes(e):
         nome_mes_input.value = ""
@@ -33,14 +62,20 @@ def main(page: ft.Page):
         page.update()
 
     def salvar_novo_mes(e):
-        # Aqui você vai chamar a sua função do banco de dados no futuro!
-        # Ex: salvar_mes_no_banco(nome_mes_input.value)
+        # 1. Manda o texto digitado para o Controlador
+        sucesso, mensagem = processar_novo_mes(nome_mes_input.value)
         
-        page.snack_bar = ft.SnackBar(ft.Text("Mês adicionado com sucesso!"), bgcolor=ft.Colors.GREEN)
+        # 2. Mostra o aviso na tela (Verde se deu certo, Vermelho se deu erro)
+        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
         page.snack_bar.open = True
         
-        fechar_modal_mes(e)
-        # atualizar_linha_meses() # Atualiza a tela depois
+        # 3. Se deu certo, fecha o modal e atualiza a barra lá em cima!
+        if sucesso:
+            fechar_modal_mes(e)
+            atualizar_linha_meses() 
+        else:
+            page.update() # Apenas atualiza a tela para mostrar o erro sem fechar
 
     # O modal novinho em folha
     modal_mes = ft.AlertDialog(
@@ -77,11 +112,20 @@ def main(page: ft.Page):
         atualizar_tabela()
         atualizar_cards_resumo()
 
+    def abrir_opcoes_mes(e):
+        # Captura o nome do mês através do detector de gestos
+        mes_clicado = e.control.data
+        estado_app["mes_alvo_opcoes"] = mes_clicado
+        
+        # Atualiza o título do modal para mostrar em qual mês clicamos
+        modal_opcoes_mes.title.value = f"Opções: {mes_clicado}"
+        modal_opcoes_mes.open = True
+        page.update()
+
     def atualizar_linha_meses():
         linha_meses.controls.clear()
         meses_db = obter_meses_disponiveis()
         
-        # Se não tiver mês selecionado, seleciona o mais recente por padrão
         if estado_app["mes_atual"] is None and len(meses_db) > 0:
             estado_app["mes_atual"] = meses_db[0]
             
@@ -90,12 +134,20 @@ def main(page: ft.Page):
             cor = ft.Colors.GREEN_400 if eh_selecionado else ft.Colors.WHITE54
             
             botao = ft.TextButton(
-                content = mes, # Exibe "2026-08"
-                data=mes, # Guarda "2026-08" na memória do botão
+                content=mes, 
+                data=mes, 
                 style=ft.ButtonStyle(color=cor),
-                on_click=clicar_mes
+                on_click=clicar_mes # O clique normal (esquerdo) continua filtrando!
             )
-            linha_meses.controls.append(botao)
+            
+            # A MÁGICA AQUI: O detector envolve o botão!
+            detector = ft.GestureDetector(
+                content=botao,
+                data=mes,
+                on_secondary_tap=abrir_opcoes_mes # on_secondary_tap = Botão Direito!
+            )
+            
+            linha_meses.controls.append(detector)
             
         page.update()
 
@@ -425,6 +477,7 @@ def main(page: ft.Page):
     # CADASTRA O MODAL AQUI (Garante que ele exista na tela, mas invisível)
     page.overlay.append(modal_novo)
     page.overlay.append(modal_mes)
+    page.overlay.append(modal_opcoes_mes)
 
     # Atualizações iniciais
     atualizar_linha_meses()
