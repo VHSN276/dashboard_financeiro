@@ -128,19 +128,17 @@ def atualizar_mes(nome_antigo, nome_novo):
     if conn:
         try:
             cursor = conn.cursor()
-            # Remove espaços acidentais no início ou fim
             nome_antigo = str(nome_antigo).strip()
             nome_novo = str(nome_novo).strip()
             
             cursor.execute("UPDATE finance_db.meses SET nome = %s WHERE nome = %s", (nome_novo, nome_antigo))
             conn.commit()
             
-            linhas_afetadas = cursor.rowcount # Confirma se o banco realmente alterou o registro
+            linhas = cursor.rowcount
             cursor.close()
             conn.close()
-            
-            return linhas_afetadas > 0
+            return linhas > 0
         except Exception as e:
-            print(f"Erro ao atualizar mês: {e}")
+            print(f"Erro ao atualizar mês no banco: {e}")
             return False
     return False

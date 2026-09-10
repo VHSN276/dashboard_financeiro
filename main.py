@@ -1,10 +1,19 @@
 import flet as ft
+import time
 from datetime import datetime
-# Importe a sua função do banco aqui (ajuste o caminho se necessário)
-from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao, obter_meses_disponiveis, processar_novo_mes, processar_edicao_mes
+
+# Importações limpas (apenas o que realmente está a ser usado)
+from controllers.transaction_controller import (
+    processar_nova_transacao, obter_transacoes_formatadas, 
+    obter_opcoes_categorias, obter_resumo_financeiro, 
+    processar_exclusao, processar_edicao, obter_meses_disponiveis, 
+    processar_novo_mes, processar_edicao_mes
+)
+
 def main(page: ft.Page):
-    # 1. Configurações da Janela
+    # =====================================================================
+    # 1. CONFIGURAÇÕES DA JANELA E ESTADO
+    # =====================================================================
     page.title = "Controle Financeiro"
     page.window_width = 900
     page.window_height = 700
@@ -13,166 +22,125 @@ def main(page: ft.Page):
 
     estado_app = {
         "id_edicao": None,
-        "filtros_ativos": [], # <-- Mudamos para uma lista!
+        "filtros_ativos": [],
         "mes_atual": None,
-        "mes_alvo_opcoes": None # <-- Nova variável!
+        "mes_alvo_opcoes": None 
     }
 
-    # 2. Criando a Seleção de 
+    # =====================================================================
+    # 2. INTERFACE BASE: CARDS DE RESUMO, TABELA E MESES
+    # =====================================================================
+    texto_ganhos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
+    texto_gastos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
+    texto_restante = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
+    
+    titulo_ganhos = ft.Text("Ganhos", size=16, weight=ft.FontWeight.W_500, color=ft.Colors.GREEN_400, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
+    titulo_gastos = ft.Text("Gastos", size=16, weight=ft.FontWeight.W_500, color=ft.Colors.RED_400, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
 
-    # --- 1. MODAL DE ADICIONAR MÊS (O que já tens na imagem) ---
-    nome_mes_input = ft.TextField(label="Nome do Mês (Ex: 2026-08)", width=300)
-    # ... fechar_modal_mes, salvar_novo_mes, abrir_modal_mes ...
-    modal_mes = ft.AlertDialog(...)
-
-    # Funções dos botões do novo modal
-    def fechar_opcoes_mes(e):
-        modal_opcoes_mes.open = False
-        page.update()
-
-    def acao_editar_mes(e):
-        mes_atual = estado_app["mes_alvo_opcoes"]
-        
-        # FORÇA o fechamento do modal de opções antes de abrir o de edição
-        fechar_opcoes_mes(e)
-        
-        novo_nome_mes_input.value = mes_atual
-        modal_editar_mes.open = True
-        page.update()
-
-    def acao_excluir_mes(e):
-        mes = estado_app["mes_alvo_opcoes"]
-        fechar_opcoes_mes(e)
-        print(f"Pronto para excluir: {mes}")
-        # Aqui depois chamaremos a exclusão no banco!
-
-    # O modal de opções
-    modal_opcoes_mes = ft.AlertDialog(
-        title=ft.Text("Opções do Mês"), # Esse texto vai mudar dinamicamente
-        content=ft.Column([
-            ft.ElevatedButton("Editar Mês", on_click=acao_editar_mes, icon=ft.Icons.EDIT, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, width=200),
-            ft.ElevatedButton("Excluir Mês", on_click=acao_excluir_mes, icon=ft.Icons.DELETE, bgcolor=ft.Colors.RED_600, color=ft.Colors.WHITE, width=200),
-        ], tight=True),
-        actions=[ft.TextButton("Cancelar", on_click=fechar_opcoes_mes)],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
-
-    novo_nome_mes_input = ft.TextField(label="Novo Nome do Mês", width=300)
-
-    def fechar_modal_editar_mes(e):
-        modal_editar_mes.open = False
-        page.update()
-
-    def salvar_edicao_mes(e):
-        mes_antigo = estado_app["mes_alvo_opcoes"]
-        mes_novo = novo_nome_mes_input.value.strip()
-        
-        # 1. Tenta atualizar no banco de dados
-        sucesso, mensagem = processar_edicao_mes(mes_antigo, mes_novo)
-        
-        # 2. Prepara a notificação
-        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
-        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
-        page.snack_bar.open = True
-        
-        if sucesso:
-            # 3. Garante que AMBOS os modais fiquem fechados
-            modal_opcoes_mes.open = False
-            modal_editar_mes.open = False
+    def criar_card(titulo_dinamico, texto_dinamico, cor_texto):
+        if isinstance(titulo_dinamico, str):
+            titulo_dinamico = ft.Text(titulo_dinamico, size=16, weight=ft.FontWeight.W_500, color=cor_texto)
             
-            # 4. Sincroniza a memória do app
-            if estado_app["mes_atual"] == mes_antigo:
-                estado_app["mes_atual"] = mes_novo
-            estado_app["mes_alvo_opcoes"] = mes_novo
-            
-            # 5. Redesenha a barra de meses e recarrega os dados
-            atualizar_linha_meses() 
-            atualizar_tabela()
-            atualizar_cards_resumo()
-            
-        # 6. Atualização única no final
-        page.update()
+        return ft.Card(
+            elevation=5,
+            content=ft.Container(
+                padding=20,
+                width=260,
+                content=ft.Column([titulo_dinamico, texto_dinamico])
+            )
+        )
 
-    modal_editar_mes = ft.AlertDialog(
-        title=ft.Text("Editar Mês"),
-        content=ft.Column([novo_nome_mes_input], tight=True),
-        actions=[
-            ft.TextButton("Cancelar", on_click=fechar_modal_editar_mes),
-            ft.ElevatedButton("Salvar Alteração", on_click=salvar_edicao_mes, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE),
-        ],
-        actions_alignment=ft.MainAxisAlignment.END,
+    card_ganhos = criar_card(titulo_ganhos, texto_ganhos, ft.Colors.GREEN_400)
+    card_gastos = criar_card(titulo_gastos, texto_gastos, ft.Colors.RED_400) 
+    card_restante = criar_card("Restante", texto_restante, ft.Colors.BLUE_400)
+
+    linha_resumo = ft.Row(
+        controls=[card_ganhos, card_gastos, card_restante],
+        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
     )
-
-    def abrir_modal_mes(e):
-        nome_mes_input.value = ""
-        nome_mes_input.update()
-        modal_mes.open = True
-        page.update()
-
-    def fechar_modal_mes(e):
-        modal_mes.open = False
-        page.update()
-
-    def salvar_novo_mes(e):
-        # 1. Manda o texto digitado para o Controlador
-        sucesso, mensagem = processar_novo_mes(nome_mes_input.value)
-        
-        # 2. Mostra o aviso na tela (Verde se deu certo, Vermelho se deu erro)
-        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
-        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
-        page.snack_bar.open = True
-        
-        # 3. Se deu certo, fecha o modal e atualiza a barra lá em cima!
-        if sucesso:
-            fechar_modal_mes(e)
-            atualizar_linha_meses() 
-        else:
-            page.update() # Apenas atualiza a tela para mostrar o erro sem fechar
-
-    # O modal novinho em folha
-    modal_mes = ft.AlertDialog(
-        title=ft.Text("Novo Mês"),
-        content=ft.Column([nome_mes_input], tight=True),
-        actions=[
-            ft.TextButton("Cancelar", on_click=fechar_modal_mes),
-            ft.ElevatedButton("Salvar", on_click=salvar_novo_mes, bgcolor=ft.Colors.GREEN_600, color=ft.Colors.WHITE),
-        ],
-        actions_alignment=ft.MainAxisAlignment.END,
-    )
-
 
     linha_meses = ft.Row(scroll=ft.ScrollMode.AUTO, alignment=ft.MainAxisAlignment.START)
-
-    # O novo botão de criar mês
-    btn_novo_mes = ft.ElevatedButton(
-        content="+ Mês",
-        bgcolor=ft.Colors.GREEN_600,
-        color=ft.Colors.WHITE,
-        on_click=abrir_modal_mes # Chama o modal que acabamos de criar!
+    
+    tabela_despesas = ft.DataTable(
+        width=float("inf"),
+        columns=[
+            ft.DataColumn(ft.Text("Descrição", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Categoria", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Data", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Valor", weight=ft.FontWeight.BOLD)),
+            ft.DataColumn(ft.Text("Ações", weight=ft.FontWeight.BOLD)),
+        ],
+        rows=[]
     )
 
-    # Juntamos o botão e a lista na mesma linha
-    barra_superior_meses = ft.Row(
-        controls=[btn_novo_mes, linha_meses],
-        alignment=ft.MainAxisAlignment.START
-    )
+    # =====================================================================
+    # 3. FUNÇÕES DE ATUALIZAÇÃO GERAIS (CORE)
+    # =====================================================================
+    def atualizar_cards_resumo():
+        filtros = estado_app["filtros_ativos"]
+        mes = estado_app["mes_atual"]
+        
+        ganhos, gastos, restante, nomes_ganhos, nomes_gastos = obter_resumo_financeiro(filtros, mes)
+        
+        texto_ganhos.value = ganhos
+        texto_gastos.value = gastos
+        texto_restante.value = restante
+        
+        if len(nomes_ganhos) > 0:
+            titulo_ganhos.value = f"Ganhos ({'/'.join(nomes_ganhos)})"
+        else:
+            titulo_ganhos.value = "Ganhos"
+
+        if len(nomes_gastos) > 0:
+            titulo_gastos.value = f"Gastos ({'/'.join(nomes_gastos)})"
+        else:
+            titulo_gastos.value = "Gastos"
+            
+        page.update()
+
+    def atualizar_tabela():
+        tabela_despesas.rows.clear()
+        filtros = estado_app["filtros_ativos"]
+        mes = estado_app["mes_atual"]
+        transacoes = obter_transacoes_formatadas(filtros, mes)
+        
+        for t in transacoes:
+            cor_texto = ft.Colors.RED_400 if t["eh_despesa"] else ft.Colors.GREEN_400
+
+            btn_excluir = ft.IconButton(
+                icon=ft.Icons.DELETE_OUTLINE, 
+                icon_color=ft.Colors.RED_400,
+                data=t["id"],
+                on_click=clicar_lixeira
+            )
+
+            btn_editar = ft.IconButton(
+                icon=ft.Icons.EDIT_OUTLINED,
+                icon_color=ft.Colors.BLUE_400,
+                data=t,
+                on_click=clicar_lapis
+            )
+
+            acoes = ft.Row([btn_editar, btn_excluir], spacing=0)
+
+            tabela_despesas.rows.append(
+                ft.DataRow(
+                    cells=[
+                        ft.DataCell(ft.Text(t["descricao"])),
+                        ft.DataCell(ft.Text(t["categoria"])),
+                        ft.DataCell(ft.Text(t["data"])),
+                        ft.DataCell(ft.Text(t["valor_texto"], color=cor_texto)),
+                        ft.DataCell(acoes),
+                    ]
+                )
+            )
+        page.update()
 
     def clicar_mes(e):
-        # Atualiza a memória com o mês clicado
         estado_app["mes_atual"] = e.control.data
         atualizar_linha_meses()
         atualizar_tabela()
         atualizar_cards_resumo()
-
-    def abrir_opcoes_mes(e):
-        # Captura o nome do mês através do detector de gestos
-        mes_clicado = e.control.data
-        estado_app["mes_alvo_opcoes"] = mes_clicado
-        
-        # Atualiza o título do modal para mostrar em qual mês clicamos
-        modal_opcoes_mes.title.value = f"Opções: {mes_clicado}"
-        modal_opcoes_mes.open = True
-        page.update()
 
     def atualizar_linha_meses():
         linha_meses.controls.clear()
@@ -186,116 +154,164 @@ def main(page: ft.Page):
             cor = ft.Colors.GREEN_400 if eh_selecionado else ft.Colors.WHITE54
             
             botao = ft.TextButton(
-                content=mes, 
+                ft.Text(mes), 
                 data=mes, 
                 style=ft.ButtonStyle(color=cor),
-                on_click=clicar_mes # O clique normal (esquerdo) continua filtrando!
+                on_click=clicar_mes 
             )
             
-            # A MÁGICA AQUI: O detector envolve o botão!
             detector = ft.GestureDetector(
                 content=botao,
                 data=mes,
-                on_secondary_tap=abrir_opcoes_mes # on_secondary_tap = Botão Direito!
+                on_secondary_tap=abrir_opcoes_mes 
             )
             
             linha_meses.controls.append(detector)
-            
         page.update()
 
-    # 3. Criando os Cards de Resumo
-    texto_ganhos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
-    texto_gastos = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
-    texto_restante = ft.Text("R$ 0,00", size=28, weight=ft.FontWeight.BOLD)
-    
-    # Transformamos o Ganhos em variável dinâmica também!
-    titulo_ganhos = ft.Text("Ganhos", size=16, weight=ft.FontWeight.W_500, color=ft.Colors.GREEN_400, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
-    titulo_gastos = ft.Text("Gastos", size=16, weight=ft.FontWeight.W_500, color=ft.Colors.RED_400, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
 
-    def criar_card(titulo_dinamico, texto_dinamico, cor_texto):
-        # Se você passar um texto simples (string), ele cria o componente na hora
-        if isinstance(titulo_dinamico, str):
-            titulo_dinamico = ft.Text(titulo_dinamico, size=16, weight=ft.FontWeight.W_500, color=cor_texto)
-            
-        return ft.Card(
-            elevation=5,
-            content=ft.Container(
-                padding=20,
-                width=260,
-                content=ft.Column([
-                    titulo_dinamico, # Agora recebe a variável aqui!
-                    texto_dinamico 
-                ])
-            )
-        )
+    # =====================================================================
+    # 4. MODAL 1: CRIAR NOVO MÊS
+    # =====================================================================
+    nome_mes_input = ft.TextField(label="Nome do Mês (Ex: 2026-08)", width=300)
 
-    card_ganhos = criar_card(titulo_ganhos, texto_ganhos, ft.Colors.GREEN_400)
-    # Aqui a gente passa a nova variável para o card de Gastos!
-    card_gastos = criar_card(titulo_gastos, texto_gastos, ft.Colors.RED_400) 
-    card_restante = criar_card("Restante", texto_restante, ft.Colors.BLUE_400)
+    def abrir_modal_mes(e):
+        nome_mes_input.value = ""
+        nome_mes_input.update()
+        modal_mes.open = True
+        page.update()
 
-    linha_resumo = ft.Row(
-        controls=[card_ganhos, card_gastos, card_restante],
-        alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+    def fechar_modal_mes(e):
+        modal_mes.open = False
+        page.update()
+
+    def salvar_novo_mes(e):
+        sucesso, mensagem = processar_novo_mes(nome_mes_input.value)
+        
+        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
+        page.snack_bar.open = True
+        
+        if sucesso:
+            fechar_modal_mes(e)
+            atualizar_linha_meses() 
+        else:
+            page.update() 
+
+    modal_mes = ft.AlertDialog(
+        title=ft.Text("Novo Mês"),
+        content=ft.Column([nome_mes_input], tight=True),
+        actions=[
+            ft.TextButton("Cancelar", on_click=fechar_modal_mes),
+            ft.ElevatedButton("Salvar", on_click=salvar_novo_mes, bgcolor=ft.Colors.GREEN_600, color=ft.Colors.WHITE),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    btn_novo_mes = ft.ElevatedButton(
+        ft.Text("+ Mês"),
+        bgcolor=ft.Colors.GREEN_600,
+        color=ft.Colors.WHITE,
+        on_click=abrir_modal_mes 
+    )
+
+    barra_superior_meses = ft.Row(
+        controls=[btn_novo_mes, linha_meses],
+        alignment=ft.MainAxisAlignment.START
     )
 
     # =====================================================================
-    # 4. SESSÃO DO FORMULÁRIO (MODAL) E BANCO DE DADOS
+    # 5. MODAL 2: GERENCIAR MÊS (EDITAR / EXCLUIR)
     # =====================================================================
+    novo_nome_mes_input = ft.TextField(label="Novo Nome do Mês", width=300)
+
+    def fechar_modal_gerenciar_mes(e):
+        modal_gerenciar_mes.open = False
+        page.update()
+
+    def acao_excluir_mes(e):
+        mes = estado_app["mes_alvo_opcoes"]
+        fechar_modal_gerenciar_mes(e)
+        print(f"Pronto para excluir: {mes}")
+        # A lógica do banco virá aqui depois!
+
+    def salvar_edicao_mes(e):
+        mes_antigo = estado_app["mes_alvo_opcoes"]
+        mes_novo = novo_nome_mes_input.value.strip()
+        
+        sucesso, mensagem = processar_edicao_mes(mes_antigo, mes_novo)
+        
+        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
+        page.snack_bar.open = True
+        
+        if sucesso:
+            modal_gerenciar_mes.open = False
+            
+            if estado_app["mes_atual"] == mes_antigo:
+                estado_app["mes_atual"] = mes_novo
+            estado_app["mes_alvo_opcoes"] = mes_novo
+            
+            atualizar_linha_meses()
+            atualizar_tabela()
+            atualizar_cards_resumo()
+        
+        page.update()
+
+    def mostrar_form_edicao(e):
+        mes_atual = estado_app["mes_alvo_opcoes"]
+        novo_nome_mes_input.value = mes_atual
+        
+        modal_gerenciar_mes.title = ft.Text(f"Editar Mês: {mes_atual}")
+        modal_gerenciar_mes.content = ft.Column([novo_nome_mes_input], tight=True)
+        modal_gerenciar_mes.actions = [
+            ft.TextButton("Cancelar", on_click=fechar_modal_gerenciar_mes),
+            ft.ElevatedButton("Salvar Alteração", on_click=salvar_edicao_mes, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE)
+        ]
+        page.update()
+
+    def abrir_opcoes_mes(e):
+        mes_clicado = e.control.data
+        estado_app["mes_alvo_opcoes"] = mes_clicado
+        
+        modal_gerenciar_mes.title = ft.Text(f"Opções: {mes_clicado}")
+        modal_gerenciar_mes.content = ft.Column([
+            ft.ElevatedButton("Editar Mês", on_click=mostrar_form_edicao, icon=ft.Icons.EDIT, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE, width=200),
+            ft.ElevatedButton("Excluir Mês", on_click=acao_excluir_mes, icon=ft.Icons.DELETE, bgcolor=ft.Colors.RED_600, color=ft.Colors.WHITE, width=200),
+        ], tight=True)
+        modal_gerenciar_mes.actions = [
+            ft.TextButton("Cancelar", on_click=fechar_modal_gerenciar_mes)
+        ]
+        modal_gerenciar_mes.open = True
+        page.update()
+
+    modal_gerenciar_mes = ft.AlertDialog(
+        title=ft.Text("Gerenciar Mês"),
+        content=ft.Container(),
+        actions=[],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
 
 
-
-    # 4.1 Campos de entrada
+    # =====================================================================
+    # 6. MODAL 3: TRANSAÇÕES (NOVA E EDITAR) E FILTROS
+    # =====================================================================
     descricao_input = ft.TextField(label="Descrição", width=300)
     valor_input = ft.TextField(label="Valor (R$)", width=300, keyboard_type=ft.KeyboardType.NUMBER)
     data_input = ft.TextField(label="Data (AAAA-MM-DD)", width=300, value=datetime.today().strftime('%Y-%m-%d'))
     tipo_dropdown = ft.Dropdown(label="Tipo", width=300, options=[ft.dropdown.Option("Receita"), ft.dropdown.Option("Despesa")])
-    # Carrega as categorias do banco via Controller
+    
     lista_categorias_db = obter_opcoes_categorias()
-    # Monta as opções do Flet dinamicamente
-    opcoes_dropdown = []
-    for cat in lista_categorias_db:
-        opcoes_dropdown.append(ft.dropdown.Option(key=cat["key"], text=cat["text"]))
-        
+    opcoes_dropdown = [ft.dropdown.Option(key=cat["key"], text=ft.Text(cat["text"])) for cat in lista_categorias_db]
     categoria_dropdown = ft.Dropdown(label="Categoria", width=300, options=opcoes_dropdown)
 
-    # 4.2 Lógica dos botões do Modal
-    def fechar_modal(e):
+    def fechar_modal_transacao(e):
         modal_novo.open = False
         page.update()
-
-    def atualizar_cards_resumo():
-        filtros = estado_app["filtros_ativos"]
-        mes = estado_app["mes_atual"]
-        
-        # Agora recebemos os 5 itens que o controlador mandou!
-        ganhos, gastos, restante, nomes_ganhos, nomes_gastos = obter_resumo_financeiro(filtros, mes)
-        
-        texto_ganhos.value = ganhos
-        texto_gastos.value = gastos
-        texto_restante.value = restante
-        
-        # Regra para o título de Ganhos
-        if len(nomes_ganhos) > 0:
-            titulo_ganhos.value = f"Ganhos ({'/'.join(nomes_ganhos)})"
-        else:
-            titulo_ganhos.value = "Ganhos"
-
-        # Regra para o título de Gastos
-        if len(nomes_gastos) > 0:
-            titulo_gastos.value = f"Gastos ({'/'.join(nomes_gastos)})"
-        else:
-            titulo_gastos.value = "Gastos"
-            
-        page.update()
-        
-    # Chama a função para carregar os números ao abrir o app
-    atualizar_cards_resumo()
 
     def salvar_transacao(e):
         id_atual = estado_app["id_edicao"]
         
-        # Se for None, é transação nova. Se tiver ID, é edição!
         if id_atual is None:
             sucesso, mensagem = processar_nova_transacao(
                 descricao=descricao_input.value,
@@ -325,46 +341,34 @@ def main(page: ft.Page):
         
         page.update()
 
-    # 4.3 Criação da janela Modal
     modal_novo = ft.AlertDialog(
         title=ft.Text("Nova Transação"),
         content=ft.Column([descricao_input, valor_input, data_input, tipo_dropdown, categoria_dropdown], tight=True),
         actions=[
-            ft.TextButton("Cancelar", on_click=fechar_modal),
+            ft.TextButton("Cancelar", on_click=fechar_modal_transacao),
             ft.ElevatedButton("Salvar", on_click=salvar_transacao, bgcolor=ft.Colors.GREEN_600, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
 
-    def abrir_modal(e):
-        estado_app["id_edicao"] = None # Garante que é modo de CRIAÇÃO
+    def abrir_modal_transacao(e):
+        estado_app["id_edicao"] = None 
         modal_novo.title = ft.Text("Nova Transação")
         
-        # Limpa os campos
         descricao_input.value = ""
         valor_input.value = ""
-        # Definindo a data de hoje como padrão para novos registros!
         data_input.value = datetime.today().strftime('%Y-%m-%d')
         tipo_dropdown.value = ""
         categoria_dropdown.value = ""
         
-        # 3. Abre o modal
         modal_novo.open = True
         page.update()
 
-    def fechar_modal(e):
-        modal_novo.open = False
-        page.update()
-
     def clicar_lapis(e):
-        # Captura todos os dados da linha clicada
         dados = e.control.data 
-        
-        # Muda o estado para modo de EDIÇÃO e troca o título do modal
         estado_app["id_edicao"] = dados["id"]
         modal_novo.title = ft.Text("Editar Transação")
         
-        # Preenche os campos com os valores puros que guardamos no Controller
         descricao_input.value = dados["descricao"]
         valor_input.value = dados["valor_puro"]
         data_input.value = dados["data"]
@@ -372,21 +376,28 @@ def main(page: ft.Page):
         categoria_dropdown.value = dados["categoria_id"]
         
         modal_novo.open = True
-        page.update(),
+        page.update()
+
+    def clicar_lixeira(e):
+        id_para_apagar = e.control.data 
+        sucesso, mensagem = processar_exclusao(id_para_apagar)
         
-    # =====================================================================
+        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
+        page.snack_bar.open = True
+        
+        if sucesso:
+            atualizar_tabela()
+            atualizar_cards_resumo()
+        page.update()
 
     def clicar_filtro(e):
         nome_filtro = e.control.label.value
-        
-        # Converte qualquer coisa que o Flet mandar (True, "True", "true") para texto minúsculo
         foi_selecionado = (str(e.data).lower() == "true")
         
-        # 1. Garante que a bolha mude de cor visualmente
         e.control.selected = foi_selecionado
         e.control.update()
         
-        # 2. Atualiza a nossa lista de forma segura
         if foi_selecionado:
             if nome_filtro not in estado_app["filtros_ativos"]:
                 estado_app["filtros_ativos"].append(nome_filtro)
@@ -394,127 +405,32 @@ def main(page: ft.Page):
             if nome_filtro in estado_app["filtros_ativos"]:
                 estado_app["filtros_ativos"].remove(nome_filtro)
         
-        # 3. PRINT DE DEBUG: Vai aparecer no seu terminal (VS Code, CMD, etc)
-        print(f"Filtros clicados agora: {estado_app['filtros_ativos']}")
-        
         atualizar_tabela()
         atualizar_cards_resumo()
 
-    # 5. A Linha de Ações: Botão + NEW e os Filtros (Bolhas)
     def criar_linha_acoes():
         botao_add = ft.ElevatedButton(
-            ft.Text("New", weight=ft.FontWeight.BOLD),
+            ft.Text("New"),
             height=40,
             bgcolor=ft.Colors.GREEN_600,
             color=ft.Colors.WHITE,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8)),
-            on_click=abrir_modal # <-- CONECTAMOS O MODAL AQUI!
+            on_click=abrir_modal_transacao 
         )
 
-        # 1. Puxa as categorias do banco (reaproveitando o Controller!)
-        lista_categorias_db = obter_opcoes_categorias()
-
-        # 2. A lista começa VAZIA (sem o chip "Todos")
         chips_filtros = []
-
-        # 3. Adiciona as categorias
-        for cat in lista_categorias_db:
+        for cat in obter_opcoes_categorias():
             chips_filtros.append(
                 ft.Chip(label=ft.Text(cat["text"]), on_select=clicar_filtro, selected_color=ft.Colors.GREEN_600)
             )
 
-        # 4. Coloca os chips numa Row (com scroll, caso você tenha muitas categorias!)
-        filtros = ft.Row(
-            controls=chips_filtros, 
-            scroll=ft.ScrollMode.AUTO
-        )
+        filtros = ft.Row(controls=chips_filtros, scroll=ft.ScrollMode.AUTO)
         
-        return ft.Row(
-            controls=[botao_add, filtros], 
-            alignment=ft.MainAxisAlignment.START, 
-            spacing=30
-        )
+        return ft.Row(controls=[botao_add, filtros], alignment=ft.MainAxisAlignment.START, spacing=30)
 
-    # 6. A Tabela de Transações
-    # 5. A Tabela de Transações (Dinâmica)
-    tabela_despesas = ft.DataTable(
-        width=float("inf"),
-        columns=[
-            ft.DataColumn(ft.Text("Descrição", weight=ft.FontWeight.BOLD)),
-            ft.DataColumn(ft.Text("Categoria", weight=ft.FontWeight.BOLD)),
-            ft.DataColumn(ft.Text("Data", weight=ft.FontWeight.BOLD)),
-            ft.DataColumn(ft.Text("Valor", weight=ft.FontWeight.BOLD)),
-            ft.DataColumn(ft.Text("Ações", weight=ft.FontWeight.BOLD)),
-        ],
-        rows=[] # Começa vazia
-    )
-
-    def clicar_lixeira(e):
-        # O ID da transação estará guardado na propriedade 'data' do botão
-        id_para_apagar = e.control.data 
-        
-        sucesso, mensagem = processar_exclusao(id_para_apagar)
-        
-        # Mostra o aviso
-        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
-        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
-        page.snack_bar.open = True
-        
-        # Se deu certo, atualiza tudo!
-        if sucesso:
-            atualizar_tabela()
-            atualizar_cards_resumo()
-        
-        page.update()
-
-    def atualizar_tabela():
-        """Pede os dados ao Controller e recria as linhas da tabela."""
-        tabela_despesas.rows.clear()
-        # Agora passamos o filtro que está salvo no estado!
-        filtros = estado_app["filtros_ativos"]
-        mes = estado_app["mes_atual"]
-        transacoes = obter_transacoes_formatadas(filtros, mes)
-        
-        for t in transacoes:
-            # Define a cor baseada no tipo (Despesa = Vermelho, Receita = Verde)
-            cor_texto = ft.Colors.RED_400 if t["eh_despesa"] else ft.Colors.GREEN_400
-
-            # Criamos o botão da lixeira, guardando o ID no parâmetro 'data'
-            btn_excluir = ft.IconButton(
-                icon=ft.Icons.DELETE_OUTLINE, 
-                icon_color=ft.Colors.RED_400,
-                data=t["id"], # <-- O Flet esconde o ID aqui dentro!
-                on_click=clicar_lixeira
-            )
-
-            # NOVO: Botão de Lápis
-            btn_editar = ft.IconButton(
-                icon=ft.Icons.EDIT_OUTLINED,
-                icon_color=ft.Colors.BLUE_400,
-                data=t, # <-- Passamos o DICIONÁRIO INTEIRO para o botão!
-                on_click=clicar_lapis
-            )
-
-            # Agrupa os dois botões na mesma célula
-            acoes = ft.Row([btn_editar, btn_excluir], spacing=0)
-
-            tabela_despesas.rows.append(
-                ft.DataRow(
-                    cells=[
-                        ft.DataCell(ft.Text(t["descricao"])),
-                        ft.DataCell(ft.Text(t["categoria"])),
-                        ft.DataCell(ft.Text(t["data"])),
-                        ft.DataCell(ft.Text(t["valor_texto"], color=cor_texto)),
-                        ft.DataCell(acoes),
-                    ]
-                )
-            )
-        page.update()
-
-    # Chama a função para carregar os dados assim que o app abrir
-    atualizar_tabela()
-
-    # 7. Adicionando tudo na tela
+    # =====================================================================
+    # 7. ADICIONANDO TUDO NO ECRÃ E INICIANDO
+    # =====================================================================
     page.add(
         barra_superior_meses,
         ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
@@ -526,11 +442,10 @@ def main(page: ft.Page):
         tabela_despesas
     )
 
-    # CADASTRA O MODAL AQUI (Garante que ele exista na tela, mas invisível)
+    # Apenas os 3 Modais finais necessários!
     page.overlay.append(modal_novo)
     page.overlay.append(modal_mes)
-    page.overlay.append(modal_opcoes_mes)
-    page.overlay.append(modal_editar_mes)
+    page.overlay.append(modal_gerenciar_mes)
 
     # Atualizações iniciais
     atualizar_linha_meses()
