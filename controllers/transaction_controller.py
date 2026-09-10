@@ -1,4 +1,4 @@
-from database.operations import adicionar_nova_transacao, listar_transacoes, listar_categorias, deletar_transacao_db, atualizar_transacao_db, adicionar_mes, listar_meses
+from database.operations import adicionar_nova_transacao, listar_transacoes, listar_categorias, deletar_transacao_db, atualizar_transacao_db, adicionar_mes, listar_meses, atualizar_mes
 
 def processar_nova_transacao(descricao, valor_str, data, tipo, categoria_id_str):
     """
@@ -202,3 +202,16 @@ def processar_novo_mes(nome_mes):
     except Exception as e:
         # Se você tentar cadastrar '2026-08' duas vezes, o MySQL vai dar erro por causa do UNIQUE
         return False, "Este mês já está cadastrado!"
+
+def processar_edicao_mes(nome_antigo, nome_novo):
+    """Regra de negócio para editar o mês."""
+    if not nome_novo.strip():
+        return False, "O novo nome não pode estar vazio."
+        
+    try:
+        sucesso = atualizar_mes(nome_antigo, nome_novo)
+        if sucesso:
+            return True, "Mês atualizado com sucesso!"
+        return False, "Erro ao atualizar na base de dados."
+    except Exception as e:
+        return False, "Este mês já existe ou ocorreu um erro!"

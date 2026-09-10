@@ -2,7 +2,7 @@ import flet as ft
 from datetime import datetime
 # Importe a sua função do banco aqui (ajuste o caminho se necessário)
 from database.operations import adicionar_nova_transacao
-from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao, obter_meses_disponiveis, processar_novo_mes
+from controllers.transaction_controller import processar_nova_transacao, obter_transacoes_formatadas, obter_opcoes_categorias, obter_resumo_financeiro, processar_exclusao, processar_edicao, obter_meses_disponiveis, processar_novo_mes, processar_edicao_mes
 def main(page: ft.Page):
     # 1. Configurações da Janela
     page.title = "Controle Financeiro"
@@ -18,10 +18,12 @@ def main(page: ft.Page):
         "mes_alvo_opcoes": None # <-- Nova variável!
     }
 
-    # 2. Criando a Seleção de Meses
-    # A lista vazia onde os meses vão entrar depois
-    # Campo de texto para o nome do mês
+    # 2. Criando a Seleção de 
+
+    # --- 1. MODAL DE ADICIONAR MÊS (O que já tens na imagem) ---
     nome_mes_input = ft.TextField(label="Nome do Mês (Ex: 2026-08)", width=300)
+    # ... fechar_modal_mes, salvar_novo_mes, abrir_modal_mes ...
+    modal_mes = ft.AlertDialog(...)
 
     # Funções dos botões do novo modal
     def fechar_opcoes_mes(e):
@@ -29,10 +31,14 @@ def main(page: ft.Page):
         page.update()
 
     def acao_editar_mes(e):
-        mes = estado_app["mes_alvo_opcoes"]
+        mes_atual = estado_app["mes_alvo_opcoes"]
+        
+        # FORÇA o fechamento do modal de opções antes de abrir o de edição
         fechar_opcoes_mes(e)
-        print(f"Pronto para editar: {mes}")
-        # Aqui depois chamaremos o modal de edição!
+        
+        novo_nome_mes_input.value = mes_atual
+        modal_editar_mes.open = True
+        page.update()
 
     def acao_excluir_mes(e):
         mes = estado_app["mes_alvo_opcoes"]
@@ -48,6 +54,52 @@ def main(page: ft.Page):
             ft.ElevatedButton("Excluir Mês", on_click=acao_excluir_mes, icon=ft.Icons.DELETE, bgcolor=ft.Colors.RED_600, color=ft.Colors.WHITE, width=200),
         ], tight=True),
         actions=[ft.TextButton("Cancelar", on_click=fechar_opcoes_mes)],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+
+    novo_nome_mes_input = ft.TextField(label="Novo Nome do Mês", width=300)
+
+    def fechar_modal_editar_mes(e):
+        modal_editar_mes.open = False
+        page.update()
+
+    def salvar_edicao_mes(e):
+        mes_antigo = estado_app["mes_alvo_opcoes"]
+        mes_novo = novo_nome_mes_input.value.strip()
+        
+        # 1. Tenta atualizar no banco de dados
+        sucesso, mensagem = processar_edicao_mes(mes_antigo, mes_novo)
+        
+        # 2. Prepara a notificação
+        cor_aviso = ft.Colors.GREEN if sucesso else ft.Colors.RED
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), bgcolor=cor_aviso)
+        page.snack_bar.open = True
+        
+        if sucesso:
+            # 3. Garante que AMBOS os modais fiquem fechados
+            modal_opcoes_mes.open = False
+            modal_editar_mes.open = False
+            
+            # 4. Sincroniza a memória do app
+            if estado_app["mes_atual"] == mes_antigo:
+                estado_app["mes_atual"] = mes_novo
+            estado_app["mes_alvo_opcoes"] = mes_novo
+            
+            # 5. Redesenha a barra de meses e recarrega os dados
+            atualizar_linha_meses() 
+            atualizar_tabela()
+            atualizar_cards_resumo()
+            
+        # 6. Atualização única no final
+        page.update()
+
+    modal_editar_mes = ft.AlertDialog(
+        title=ft.Text("Editar Mês"),
+        content=ft.Column([novo_nome_mes_input], tight=True),
+        actions=[
+            ft.TextButton("Cancelar", on_click=fechar_modal_editar_mes),
+            ft.ElevatedButton("Salvar Alteração", on_click=salvar_edicao_mes, bgcolor=ft.Colors.BLUE_600, color=ft.Colors.WHITE),
+        ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
 
@@ -478,6 +530,7 @@ def main(page: ft.Page):
     page.overlay.append(modal_novo)
     page.overlay.append(modal_mes)
     page.overlay.append(modal_opcoes_mes)
+    page.overlay.append(modal_editar_mes)
 
     # Atualizações iniciais
     atualizar_linha_meses()
