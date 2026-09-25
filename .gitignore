@@ -1,18 +1,20 @@
-# Senhas e Variáveis de Ambiente
 .env
-database/user_credences
 
-# Ambiente Virtual
-venv/
+# Credenciais locais e variantes do diretório legado
+database/user_credences/
+database/user_crendences/
+
+# Ambientes virtuais
 .venv/
+venv/
 env/
 
-# Arquivos de Cache do Python
+# Cache e artefatos Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# Arquivos de banco de dados locais (se for usar SQLite no futuro)
+# Bancos de dados locais
 *.sqlite3
 *.db

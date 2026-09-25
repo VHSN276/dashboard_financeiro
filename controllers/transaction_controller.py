@@ -1,147 +1,172 @@
-from database.operations import adicionar_nova_transacao, listar_transacoes, listar_categorias, deletar_transacao_db, atualizar_transacao_db
+"""Regras de negócio e formatação de dados das transações."""
+
+import logging
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
+from database.operations import (
+    adicionar_nova_transacao,
+    atualizar_transacao_db,
+    deletar_transacao_db,
+    listar_categorias,
+    listar_transacoes,
+)
+
+
+logger = logging.getLogger(__name__)
+TIPOS_TRANSACAO = {
+    "RECEITA": "RECEITA",
+    "GANHO": "RECEITA",
+    "DESPESA": "DESPESA",
+}
+
+
+def _validar_dados(descricao, valor, data, tipo, categoria_id):
+    descricao = (descricao or "").strip()
+    if not descricao or not valor or not tipo or not categoria_id:
+        raise ValueError("Preencha todos os campos obrigatórios.")
+
+    try:
+        valor_formatado = Decimal(str(valor).strip().replace(",", "."))
+    except InvalidOperation as erro:
+        raise ValueError("Valor inválido. Use um número, como 21,90.") from erro
+    if not valor_formatado.is_finite():
+        raise ValueError("Valor inválido. Use um número, como 21,90.")
+
+    tipo_formatado = TIPOS_TRANSACAO.get(str(tipo).strip().upper())
+    if tipo_formatado is None:
+        raise ValueError("Selecione Receita ou Despesa.")
+
+    try:
+        data_formatada = datetime.strptime(str(data).strip(), "%Y-%m-%d").date()
+        categoria_formatada = int(categoria_id)
+    except (TypeError, ValueError) as erro:
+        raise ValueError("Confira a data e a categoria selecionadas.") from erro
+
+    return descricao, valor_formatado, data_formatada, tipo_formatado, categoria_formatada
+
+
+def _formatar_moeda(valor):
+    valor = Decimal(str(valor)).quantize(Decimal("0.01"))
+    texto = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {texto}"
+
+
+def _obter_transacoes():
+    try:
+        return listar_transacoes()
+    except Exception:
+        logger.exception("Não foi possível listar as transações.")
+        return []
+
+
+def _mensagem_erro(acao):
+    logger.exception("Falha ao %s transação.", acao)
+    return False, f"Não foi possível {acao} a transação. Verifique o banco de dados."
+
 
 def processar_nova_transacao(descricao, valor_str, data, tipo, categoria_id_str):
-    """
-    Controlador: Recebe os dados em texto da View, valida, formata e envia para o Model.
-    Retorna uma tupla: (Sucesso (Booleano), Mnsagem (Stering))
-    """
     try:
-        # 1. Validação de campos vazios
-        if not descricao or not valor_str or not tipo or not categoria_id_str:
-            return False, "Por favor, preencha todos os campos obrigatórios."
-
-        # 2. Formatação dos dados
-        valor_formatado = float(valor_str.replace(",", "."))
-        categoria_id = int(categoria_id_str)
-
-        # 3. Comunicação com o Banco de Dados (Model)
-        sucesso = adicionar_nova_transacao(descricao, valor_formatado, data, tipo, categoria_id)
-
-        if sucesso:
+        dados = _validar_dados(descricao, valor_str, data, tipo, categoria_id_str)
+        if adicionar_nova_transacao(*dados):
             return True, "Transação salva com sucesso!"
-        else:
-            return False, "Erro ao salvar no banco de dados."
+        return False, "Banco de dados indisponível. Tente novamente."
+    except ValueError as erro:
+        return False, str(erro)
+    except Exception:
+        return _mensagem_erro("salvar")
 
-    except ValueError:
-        return False, "Valor inválido. Digite apenas números (ex: 21.90 ou 21,90)."
-    except Exception as e:
-        return False, f"Erro inesperado: {str(e)}"
 
 def obter_transacoes_formatadas(filtros_ativos=None):
-    if filtros_ativos is None:
-        filtros_ativos = []
-
-    transacoes_brutas = listar_transacoes()
+    filtros = set(filtros_ativos or [])
     transacoes_prontas = []
-    
-    for t in transacoes_brutas:
-        id_transacao, descricao, categoria_nome, data, valor, tipo, categoria_id = t
 
-        # A MÁGICA DO MULTI-SELECT:
-        # Se tem algo na lista de filtros E a categoria não está lá dentro, ignoramos essa linha!
-        if len(filtros_ativos) > 0 and categoria_nome not in filtros_ativos:
+    for transacao in _obter_transacoes():
+        id_transacao, descricao, categoria, data, valor, tipo, categoria_id = transacao
+        if filtros and categoria not in filtros:
             continue
-        
-        eh_despesa = (tipo == "Despesa" or tipo == "DESPESA") 
+
+        eh_despesa = str(tipo).upper() == "DESPESA"
         sinal = "-" if eh_despesa else "+"
-        valor_texto = f"{sinal} R$ {valor:.2f}"
-        
-        transacoes_prontas.append({
-            "id": id_transacao, 
-            "descricao": descricao,
-            "categoria": categoria_nome,
-            "data": str(data),
-            "valor_texto": valor_texto,
-            "eh_despesa": eh_despesa,
-            # Guardamos os dados puros para conseguir jogar de volta no formulário
-            "valor_puro": str(valor),
-            "tipo_puro": tipo,
-            "categoria_id": str(categoria_id) 
-        })
-        
+        transacoes_prontas.append(
+            {
+                "id": id_transacao,
+                "descricao": descricao,
+                "categoria": categoria,
+                "data": str(data),
+                "valor_texto": f"{sinal} {_formatar_moeda(valor)}",
+                "eh_despesa": eh_despesa,
+                "valor_puro": str(valor),
+                "tipo_puro": tipo,
+                "categoria_id": str(categoria_id) if categoria_id is not None else None,
+            }
+        )
+
     return transacoes_prontas
 
+
 def obter_opcoes_categorias():
-    """
-    Controller: Pede as categorias ao banco e formata para o Dropdown.
-    """
-    categorias_brutas = listar_categorias()
-    opcoes = []
-    
-    for c in categorias_brutas:
-        id_cat, nome_cat = c
-        # O Flet exige que a chave (key) seja uma String
-        opcoes.append({"key": str(id_cat), "text": nome_cat})
-        
-    return opcoes
+    try:
+        categorias = listar_categorias()
+    except Exception:
+        logger.exception("Não foi possível carregar as categorias.")
+        return []
+
+    return [{"key": str(id_categoria), "text": nome} for id_categoria, nome in categorias]
+
 
 def obter_resumo_financeiro(filtros_ativos=None):
-    if filtros_ativos is None:
-        filtros_ativos = []
-        
-    transacoes_brutas = listar_transacoes()
-    total_ganhos = 0.0
-    total_gastos = 0.0
-    
-    # Criamos dois 'conjuntos' (sets) para guardar os nomes sem repeti-los
+    filtros = set(filtros_ativos or [])
+    total_ganhos = Decimal("0.00")
+    total_gastos = Decimal("0.00")
     nomes_ganhos = set()
     nomes_gastos = set()
-    
-    for t in transacoes_brutas:
-        categoria_nome = t[2]
-        valor = float(t[4])
-        tipo = t[5].upper()
-        
-        # Se a categoria está marcada no filtro, nós descobrimos de qual lado ela é!
-        if categoria_nome in filtros_ativos:
-            if tipo == "RECEITA" or tipo == "GANHO": # Ajuste para a palavra exata do seu banco
-                nomes_ganhos.add(categoria_nome)
-            else:
-                nomes_gastos.add(categoria_nome)
-                
-        # Continua a lógica matemática normal
-        if len(filtros_ativos) > 0 and categoria_nome not in filtros_ativos:
+
+    for transacao in _obter_transacoes():
+        categoria = transacao[2]
+        valor = Decimal(str(transacao[4]))
+        tipo = str(transacao[5]).upper()
+
+        if filtros and categoria not in filtros:
             continue
-            
-        if tipo == "RECEITA" or tipo == "GANHO":
+
+        if tipo in {"RECEITA", "GANHO"}:
             total_ganhos += valor
+            if categoria in filtros:
+                nomes_ganhos.add(categoria)
         else:
             total_gastos += valor
-            
+            if categoria in filtros:
+                nomes_gastos.add(categoria)
+
     restante = total_ganhos - total_gastos
-    
-    # Agora a função devolve 5 coisas! Os 3 valores, e as 2 listas de nomes.
     return (
-        f"R$ {total_ganhos:,.2f}", 
-        f"R$ {total_gastos:,.2f}", 
-        f"R$ {restante:,.2f}",
-        list(nomes_ganhos), 
-        list(nomes_gastos)
+        _formatar_moeda(total_ganhos),
+        _formatar_moeda(total_gastos),
+        _formatar_moeda(restante),
+        sorted(nomes_ganhos),
+        sorted(nomes_gastos),
     )
 
+
 def processar_exclusao(id_transacao):
-    """Controller: Pede ao Model para apagar e retorna o status."""
-    sucesso = deletar_transacao_db(id_transacao)
-    if sucesso:
-        return True, "Transação apagada com sucesso!"
-    return False, "Erro ao tentar apagar a transação."
-
-def processar_edicao(id_transacao, descricao, valor_str, data, tipo, categoria_id_str):
-    """Controller: Valida e envia a atualização pro Model."""
     try:
-        if not descricao or not valor_str or not tipo or not categoria_id_str:
-            return False, "Por favor, preencha todos os campos obrigatórios."
+        if deletar_transacao_db(id_transacao):
+            return True, "Transação apagada com sucesso!"
+        return False, "Transação não encontrada ou banco indisponível."
+    except Exception:
+        return _mensagem_erro("excluir")
 
-        valor_formatado = float(valor_str.replace(",", "."))
-        categoria_id = int(categoria_id_str)
 
-        sucesso = atualizar_transacao_db(id_transacao, descricao, valor_formatado, data, tipo, categoria_id)
-
-        if sucesso:
+def processar_edicao(
+    id_transacao, descricao, valor_str, data, tipo, categoria_id_str
+):
+    try:
+        dados = _validar_dados(descricao, valor_str, data, tipo, categoria_id_str)
+        if atualizar_transacao_db(id_transacao, *dados):
             return True, "Transação atualizada com sucesso!"
-        return False, "Erro ao atualizar no banco."
-
-    except ValueError:
-        return False, "Valor inválido. Digite apenas números."
-    except Exception as e:
-        return False, f"Erro inesperado: {str(e)}"
+        return False, "Banco de dados indisponível. Tente novamente."
+    except ValueError as erro:
+        return False, str(erro)
+    except Exception:
+        return _mensagem_erro("atualizar")
