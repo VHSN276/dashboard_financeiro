@@ -74,6 +74,7 @@ def inicializar_banco():
         cursor.execute(queries.CRIAR_TABELA_CATEGORIAS)
         cursor.execute(queries.CRIAR_TABELA_TRANSACOES)
         cursor.execute(queries.CRIAR_TABELA_METAS)
+        cursor.execute(queries.CRIAR_TABELA_MESES)
 
         cursor.execute("SELECT COUNT(*) FROM categorias")
         if cursor.fetchone()[0] == 0:

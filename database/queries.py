@@ -26,6 +26,11 @@ CRIAR_TABELA_METAS = """CREATE TABLE IF NOT EXISTS metas (
     data_limite DATE
 )"""
 
+CRIAR_TABELA_MESES = """CREATE TABLE IF NOT EXISTS meses (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nome VARCHAR(50) NOT NULL UNIQUE
+)"""
+
 INSERIR_TRANSACAO = """INSERT INTO finance_db.transacoes
     (descricao, valor, data, tipo, categoria_id)
     VALUES (%s, %s, %s, %s, %s)"""
@@ -51,3 +56,9 @@ EXCLUIR_TRANSACAO = "DELETE FROM finance_db.transacoes WHERE id = %s"
 ATUALIZAR_TRANSACAO = """UPDATE finance_db.transacoes
 SET descricao = %s, valor = %s, data = %s, tipo = %s, categoria_id = %s
 WHERE id = %s"""
+
+INSERIR_MES = "INSERT INTO finance_db.meses (nome) VALUES (%s)"
+
+LISTAR_MESES = "SELECT id, nome FROM finance_db.meses ORDER BY nome"
+
+ATUALIZAR_MES = "UPDATE finance_db.meses SET nome = %s WHERE nome = %s"

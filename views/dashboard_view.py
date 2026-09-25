@@ -50,9 +50,9 @@ class DashboardView:
             ),
         )
 
-    def atualizar(self, filtros_ativos=None):
+    def atualizar(self, filtros_ativos=None, mes_filtro=None):
         ganhos, gastos, restante, nomes_ganhos, nomes_gastos = obter_resumo_financeiro(
-            filtros_ativos
+            filtros_ativos, mes_filtro
         )
         self.texto_ganhos.value = ganhos
         self.texto_gastos.value = gastos

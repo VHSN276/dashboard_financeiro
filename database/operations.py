@@ -1,7 +1,7 @@
 """Acesso ao banco de dados para as operações da aplicação."""
 
-from database.connection_bd import get_connection
 from database import queries
+from database.connection_bd import get_connection
 
 
 def _executar(sql, parametros=(), *, buscar=None, confirmar=False):
@@ -14,7 +14,6 @@ def _executar(sql, parametros=(), *, buscar=None, confirmar=False):
     try:
         cursor = conexao.cursor()
         cursor.execute(sql, parametros)
-
         if confirmar:
             conexao.commit()
 
@@ -65,5 +64,26 @@ def atualizar_transacao_db(
         (descricao, valor, data, tipo, categoria_id, id_transacao),
         confirmar=True,
     )
-    # O MySQL pode reportar zero alterações se os valores forem iguais.
+    return resultado is not None
+
+
+def adicionar_mes(nome_mes):
+    resultado = _executar(
+        queries.INSERIR_MES,
+        (nome_mes,),
+        confirmar=True,
+    )
+    return resultado is not None
+
+
+def listar_meses():
+    return _executar(queries.LISTAR_MESES, buscar="todos") or []
+
+
+def atualizar_mes(nome_antigo, nome_novo):
+    resultado = _executar(
+        queries.ATUALIZAR_MES,
+        (nome_novo, nome_antigo),
+        confirmar=True,
+    )
     return resultado is not None

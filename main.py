@@ -3,6 +3,7 @@
 import flet as ft
 
 from views.dashboard_view import DashboardView
+from views.meses_view import MesesView
 from views.transacoes_view import TransacoesView
 
 
@@ -15,20 +16,22 @@ def main(page: ft.Page):
 
     dashboard = DashboardView()
 
-    def atualizar_dashboard(filtros_ativos):
-        dashboard.atualizar(filtros_ativos)
+    def atualizar_dashboard(filtros_ativos, mes_filtro):
+        dashboard.atualizar(filtros_ativos, mes_filtro)
         page.update()
 
     transacoes = TransacoesView(page, atualizar_dashboard)
+    meses = MesesView(page, transacoes.selecionar_mes)
 
     page.add(
+        meses.control,
+        ft.Divider(height=12, color=ft.Colors.TRANSPARENT),
         dashboard.control,
         ft.Divider(height=20, color=ft.Colors.TRANSPARENT),
         transacoes.control,
     )
 
-    transacoes.atualizar_tabela()
-    atualizar_dashboard(transacoes.filtros_ativos)
+    meses.atualizar()
 
 
 if __name__ == "__main__":

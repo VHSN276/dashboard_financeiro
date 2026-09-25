@@ -18,6 +18,7 @@ class TransacoesView:
         self.page = page
         self.ao_alterar_dados = ao_alterar_dados
         self.filtros_ativos = []
+        self.mes_atual = None
         self.id_edicao = None
 
         self.descricao_input = ft.TextField(label="Descrição", width=300)
@@ -119,7 +120,9 @@ class TransacoesView:
 
     def atualizar_tabela(self):
         linhas = []
-        for transacao in obter_transacoes_formatadas(self.filtros_ativos):
+        for transacao in obter_transacoes_formatadas(
+            self.filtros_ativos, self.mes_atual
+        ):
             cor = (
                 ft.Colors.RED_400
                 if transacao["eh_despesa"]
@@ -168,7 +171,12 @@ class TransacoesView:
             self.filtros_ativos.remove(nome)
 
         self.atualizar_tabela()
-        self.ao_alterar_dados(self.filtros_ativos)
+        self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
+
+    def selecionar_mes(self, mes):
+        self.mes_atual = mes
+        self.atualizar_tabela()
+        self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
 
     def _abrir_nova_transacao(self, _evento):
         self.id_edicao = None
@@ -210,7 +218,7 @@ class TransacoesView:
         if sucesso:
             self.modal.open = False
             self.atualizar_tabela()
-            self.ao_alterar_dados(self.filtros_ativos)
+            self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
         self.page.update()
 
     def _excluir_transacao(self, evento):
@@ -218,7 +226,7 @@ class TransacoesView:
         self._mostrar_mensagem(mensagem, sucesso)
         if sucesso:
             self.atualizar_tabela()
-            self.ao_alterar_dados(self.filtros_ativos)
+            self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
         self.page.update()
 
     def _fechar_modal(self, _evento):
