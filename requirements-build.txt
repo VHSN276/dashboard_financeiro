@@ -1,0 +1,5 @@
+# Versões exatas para gerar o executável (flet-cli precisa ser igual ao flet).
+flet==0.86.5
+flet-cli==0.86.5
+flet-desktop==0.86.5
+pyinstaller>=6,<7

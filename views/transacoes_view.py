@@ -1,16 +1,24 @@
 """Formulário, filtros e tabela de transações."""
 
+import calendar
+import logging
 from datetime import datetime
 
 import flet as ft
 
 from controllers.transaction_controller import (
+    obter_meses_disponiveis,
     obter_opcoes_categorias,
     obter_transacoes_formatadas,
     processar_edicao,
     processar_exclusao,
     processar_nova_transacao,
 )
+from database.errors import MENSAGEM_BANCO_INDISPONIVEL
+from views.mensagens import mostrar_mensagem
+
+
+logger = logging.getLogger(__name__)
 
 
 class TransacoesView:
@@ -21,32 +29,18 @@ class TransacoesView:
         self.mes_atual = None
         self.id_edicao = None
 
-        self.descricao_input = ft.TextField(label="Descrição", width=300)
-        self.valor_input = ft.TextField(
-            label="Valor (R$)", width=300, keyboard_type=ft.KeyboardType.NUMBER
+        self.erro_categorias = ft.Text(
+            visible=False,
+            color=ft.Colors.RED_300,
+            size=13,
         )
-        self.data_input = ft.TextField(
-            label="Data (AAAA-MM-DD)",
-            width=300,
-            value=datetime.today().strftime("%Y-%m-%d"),
-        )
-        self.tipo_dropdown = ft.Dropdown(
-            label="Tipo",
-            width=300,
-            options=[
-                ft.dropdown.Option(key="RECEITA", text="Receita"),
-                ft.dropdown.Option(key="DESPESA", text="Despesa"),
-            ],
-        )
-        self.categorias = obter_opcoes_categorias()
-        self.categoria_dropdown = ft.Dropdown(
-            label="Categoria",
-            width=300,
-            options=[
-                ft.dropdown.Option(key=opcao["key"], text=opcao["text"])
-                for opcao in self.categorias
-            ],
-        )
+        try:
+            self.categorias = obter_opcoes_categorias()
+        except Exception:
+            logger.exception("Não foi possível carregar as opções de categoria.")
+            self.categorias = []
+            self.erro_categorias.value = MENSAGEM_BANCO_INDISPONIVEL
+            self.erro_categorias.visible = True
         self.tabela = ft.DataTable(
             width=float("inf"),
             columns=[
@@ -58,19 +52,131 @@ class TransacoesView:
             ],
             rows=[],
         )
+        self.erro_tabela = ft.Text(
+            visible=False,
+            color=ft.Colors.RED_300,
+            size=13,
+        )
+        self.linha_filtros = ft.Row(
+            controls=self._criar_chips_filtro(),
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        )
 
+        self.modal = None  # criado a cada abertura, em _abrir_modal
+
+        self.control = ft.Column(
+            controls=[
+                self._criar_linha_acoes(),
+                self.erro_categorias,
+                self.erro_tabela,
+                self.tabela,
+            ],
+            spacing=12,
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        )
+
+    def _carregar_meses(self):
+        try:
+            return obter_meses_disponiveis(), ""
+        except Exception:
+            logger.exception("Não foi possível carregar os meses do formulário.")
+            return [], MENSAGEM_BANCO_INDISPONIVEL
+
+    def _montar_formulario(self, dados=None):
+        """Cria os campos do modal do zero a cada abertura.
+
+        Campos novos evitam que o Flet continue exibindo a seleção anterior nos
+        dropdowns (limpar o valor no Python não limpava o texto na tela, e o
+        formulário parecia preenchido sem estar). A lista de meses é lida aqui,
+        então meses criados ou removidos aparecem automaticamente.
+        """
+        meses, erro = self._carregar_meses()
+        if dados is not None:
+            mes_inicial = dados["mes"] if dados["mes"] in meses else None
+        elif self.mes_atual in meses:
+            mes_inicial = self.mes_atual
+        else:
+            mes_inicial = meses[0] if meses else None
+
+        hoje = datetime.today().strftime("%Y-%m-%d")
+        if dados is not None:
+            data_inicial = dados["data"]
+        elif mes_inicial and mes_inicial != hoje[:7]:
+            data_inicial = f"{mes_inicial}-01"
+        else:
+            data_inicial = hoje
+
+        self.erro_modal = ft.Text(
+            value=erro,
+            visible=bool(erro),
+            color=ft.Colors.RED_300,
+            size=13,
+        )
+        self.descricao_input = ft.TextField(
+            label="Descrição",
+            width=300,
+            autofocus=True,
+            value=dados["descricao"] if dados else "",
+        )
+        self.valor_input = ft.TextField(
+            label="Valor (R$)",
+            width=300,
+            keyboard_type=ft.KeyboardType.NUMBER,
+            value=dados["valor_puro"] if dados else "",
+        )
+        self.data_input = ft.TextField(
+            label="Data (AAAA-MM-DD)", width=300, value=data_inicial
+        )
+        self.mes_dropdown = ft.Dropdown(
+            label="Mês",
+            width=300,
+            options=[ft.dropdown.Option(key=mes, text=mes) for mes in meses],
+            value=mes_inicial,
+            on_select=self._ao_selecionar_mes,
+        )
+        self.tipo_dropdown = ft.Dropdown(
+            label="Tipo",
+            width=300,
+            options=[
+                ft.dropdown.Option(key="RECEITA", text="Receita"),
+                ft.dropdown.Option(key="DESPESA", text="Despesa"),
+            ],
+            value=dados["tipo_puro"] if dados else None,
+        )
+        self.categoria_dropdown = ft.Dropdown(
+            label="Categoria",
+            width=300,
+            options=[
+                ft.dropdown.Option(key=opcao["key"], text=opcao["text"])
+                for opcao in self.categorias
+            ],
+            value=dados["categoria_id"] if dados else None,
+        )
+        self._formulario = ft.Column(
+            [
+                self.descricao_input,
+                self.valor_input,
+                self.data_input,
+                self.mes_dropdown,
+                self.tipo_dropdown,
+                self.categoria_dropdown,
+                self.erro_modal,
+            ],
+            tight=True,
+        )
+
+    def _abrir_modal(self, titulo, dados=None):
+        """Cria um diálogo novo, com campos novos, e o exibe.
+
+        Reaproveitar um diálogo do overlay trocando o conteúdo fazia os campos
+        recriados não sincronizarem com o Python (valores e erros se perdiam).
+        """
+        self._montar_formulario(dados)
         self.modal = ft.AlertDialog(
-            title=ft.Text("Nova transação"),
-            content=ft.Column(
-                [
-                    self.descricao_input,
-                    self.valor_input,
-                    self.data_input,
-                    self.tipo_dropdown,
-                    self.categoria_dropdown,
-                ],
-                tight=True,
-            ),
+            title=ft.Text(titulo),
+            content=self._formulario,
             actions=[
                 ft.TextButton("Cancelar", on_click=self._fechar_modal),
                 ft.ElevatedButton(
@@ -82,24 +188,22 @@ class TransacoesView:
             ],
             actions_alignment=ft.MainAxisAlignment.END,
         )
-        self.page.overlay.append(self.modal)
+        self.page.show_dialog(self.modal)
 
-        self.control = ft.Column(
-            controls=[self._criar_linha_acoes(), self.tabela],
-            spacing=12,
-            scroll=ft.ScrollMode.AUTO,
-            expand=True,
-        )
+    def _ao_selecionar_mes(self, _evento):
+        """Leva a data para o mês escolhido, mantendo o dia (ajustado ao mês)."""
+        mes = self.mes_dropdown.value
+        try:
+            data = datetime.strptime((self.data_input.value or "").strip(), "%Y-%m-%d")
+        except ValueError:
+            return
+        if not mes or data.strftime("%Y-%m") == mes:
+            return
+        ultimo_dia = calendar.monthrange(int(mes[:4]), int(mes[5:]))[1]
+        self.data_input.value = f"{mes}-{min(data.day, ultimo_dia):02d}"
+        self.page.update()
 
     def _criar_linha_acoes(self):
-        chips = [
-            ft.Chip(
-                label=ft.Text(opcao["text"]),
-                on_select=self._alternar_filtro,
-                selected_color=ft.Colors.GREEN_600,
-            )
-            for opcao in self.categorias
-        ]
         return ft.Row(
             controls=[
                 ft.ElevatedButton(
@@ -112,17 +216,62 @@ class TransacoesView:
                     ),
                     on_click=self._abrir_nova_transacao,
                 ),
-                ft.Row(controls=chips, scroll=ft.ScrollMode.AUTO, expand=True),
+                self.linha_filtros,
             ],
             alignment=ft.MainAxisAlignment.START,
             spacing=20,
         )
 
+    def _criar_chips_filtro(self):
+        return [
+            ft.Chip(
+                label=ft.Text(opcao["text"]),
+                on_select=self._alternar_filtro,
+                selected_color=ft.Colors.GREEN_600,
+                selected=opcao["text"] in self.filtros_ativos,
+            )
+            for opcao in self.categorias
+        ]
+
+    def atualizar_categorias(self):
+        try:
+            categorias = obter_opcoes_categorias()
+        except Exception:
+            logger.exception("Não foi possível atualizar as categorias.")
+            self.erro_categorias.value = MENSAGEM_BANCO_INDISPONIVEL
+            self.erro_categorias.visible = True
+            self.page.update()
+            return False
+
+        self.categorias = categorias
+        self.erro_categorias.value = ""
+        self.erro_categorias.visible = False
+        nomes_validos = {opcao["text"] for opcao in categorias}
+        self.filtros_ativos = [
+            nome for nome in self.filtros_ativos if nome in nomes_validos
+        ]
+        self.linha_filtros.controls = self._criar_chips_filtro()
+        self.atualizar_tabela()
+        self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
+        return True
+
     def atualizar_tabela(self):
         linhas = []
-        for transacao in obter_transacoes_formatadas(
-            self.filtros_ativos, self.mes_atual
-        ):
+        try:
+            transacoes = obter_transacoes_formatadas(
+                self.filtros_ativos, self.mes_atual
+            )
+        except Exception:
+            logger.exception("Não foi possível carregar as transações na tabela.")
+            self.tabela.rows = []
+            self.erro_tabela.value = MENSAGEM_BANCO_INDISPONIVEL
+            self.erro_tabela.visible = True
+            self.page.update()
+            return
+
+        self.erro_tabela.value = ""
+        self.erro_tabela.visible = False
+        for transacao in transacoes:
             cor = (
                 ft.Colors.RED_400
                 if transacao["eh_despesa"]
@@ -180,32 +329,19 @@ class TransacoesView:
 
     def _abrir_nova_transacao(self, _evento):
         self.id_edicao = None
-        self.modal.title = ft.Text("Nova transação")
-        self.descricao_input.value = ""
-        self.valor_input.value = ""
-        self.data_input.value = datetime.today().strftime("%Y-%m-%d")
-        self.tipo_dropdown.value = None
-        self.categoria_dropdown.value = None
-        self.modal.open = True
-        self.page.update()
+        self._abrir_modal("Nova transação")
 
     def _editar_transacao(self, evento):
         dados = evento.control.data
         self.id_edicao = dados["id"]
-        self.modal.title = ft.Text("Editar transação")
-        self.descricao_input.value = dados["descricao"]
-        self.valor_input.value = dados["valor_puro"]
-        self.data_input.value = dados["data"]
-        self.tipo_dropdown.value = dados["tipo_puro"]
-        self.categoria_dropdown.value = dados["categoria_id"]
-        self.modal.open = True
-        self.page.update()
+        self._abrir_modal("Editar transação", dados)
 
     def _salvar_transacao(self, _evento):
         argumentos = (
             self.descricao_input.value,
             self.valor_input.value,
             self.data_input.value,
+            self.mes_dropdown.value,
             self.tipo_dropdown.value,
             self.categoria_dropdown.value,
         )
@@ -214,11 +350,20 @@ class TransacoesView:
         else:
             sucesso, mensagem = processar_edicao(self.id_edicao, *argumentos)
 
-        self._mostrar_mensagem(mensagem, sucesso)
-        if sucesso:
-            self.modal.open = False
-            self.atualizar_tabela()
-            self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
+        if not sucesso:
+            # erro dentro do modal: o snackbar ficaria escurecido sob a janela
+            self.erro_modal.value = mensagem
+            self.erro_modal.visible = True
+            self.page.update()
+            return
+
+        self.page.pop_dialog()
+        self.atualizar_tabela()
+        self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
+        mes_salvo = argumentos[3]
+        if self.mes_atual and mes_salvo != self.mes_atual:
+            mensagem += f" Ela aparece no mês {mes_salvo}."
+        self._mostrar_mensagem(mensagem, True)
         self.page.update()
 
     def _excluir_transacao(self, evento):
@@ -230,12 +375,7 @@ class TransacoesView:
         self.page.update()
 
     def _fechar_modal(self, _evento):
-        self.modal.open = False
-        self.page.update()
+        self.page.pop_dialog()
 
     def _mostrar_mensagem(self, mensagem, sucesso):
-        self.page.snack_bar = ft.SnackBar(
-            ft.Text(mensagem),
-            bgcolor=ft.Colors.GREEN if sucesso else ft.Colors.RED,
-        )
-        self.page.snack_bar.open = True
+        mostrar_mensagem(self.page, mensagem, sucesso)
