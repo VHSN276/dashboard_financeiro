@@ -1,12 +1,20 @@
 """Seletor e formulários de gerenciamento dos meses do dashboard."""
 
+import logging
+
 import flet as ft
 
 from controllers.transaction_controller import (
     obter_meses_disponiveis,
     processar_edicao_mes,
+    processar_exclusao_mes,
     processar_novo_mes,
 )
+from database.errors import MENSAGEM_BANCO_INDISPONIVEL
+from views.mensagens import mostrar_mensagem
+
+
+logger = logging.getLogger(__name__)
 
 
 class MesesView:
@@ -18,6 +26,11 @@ class MesesView:
         self.linha_meses = ft.Row(
             scroll=ft.ScrollMode.AUTO,
             alignment=ft.MainAxisAlignment.START,
+        )
+        self.erro_carregamento = ft.Text(
+            visible=False,
+            color=ft.Colors.RED_300,
+            size=13,
         )
 
         self.nome_mes_input = ft.TextField(
@@ -48,21 +61,38 @@ class MesesView:
         )
         self.page.overlay.extend([self.modal_novo_mes, self.modal_gerenciar_mes])
 
-        self.control = ft.Row(
+        self.control = ft.Column(
             controls=[
-                ft.ElevatedButton(
-                    "+ Mês",
-                    bgcolor=ft.Colors.GREEN_600,
-                    color=ft.Colors.WHITE,
-                    on_click=self._abrir_modal_novo_mes,
+                ft.Row(
+                    controls=[
+                        ft.ElevatedButton(
+                            "+ Mês",
+                            bgcolor=ft.Colors.GREEN_600,
+                            color=ft.Colors.WHITE,
+                            on_click=self._abrir_modal_novo_mes,
+                        ),
+                        ft.Container(expand=True, content=self.linha_meses),
+                    ],
+                    spacing=16,
                 ),
-                ft.Container(expand=True, content=self.linha_meses),
+                self.erro_carregamento,
             ],
-            spacing=16,
+            spacing=4,
         )
 
     def atualizar(self):
-        meses = obter_meses_disponiveis()
+        try:
+            meses = obter_meses_disponiveis()
+        except Exception:
+            logger.exception("Não foi possível carregar os meses na interface.")
+            self.erro_carregamento.value = MENSAGEM_BANCO_INDISPONIVEL
+            self.erro_carregamento.visible = True
+            self.page.update()
+            self.ao_selecionar_mes(self.mes_atual)
+            return
+
+        self.erro_carregamento.value = ""
+        self.erro_carregamento.visible = False
         if self.mes_atual not in meses:
             self.mes_atual = meses[0] if meses else None
 
@@ -123,7 +153,14 @@ class MesesView:
                     bgcolor=ft.Colors.BLUE_600,
                     color=ft.Colors.WHITE,
                     on_click=self._mostrar_formulario_edicao,
-                )
+                ),
+                ft.ElevatedButton(
+                    "Excluir mês",
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    bgcolor=ft.Colors.RED_700,
+                    color=ft.Colors.WHITE,
+                    on_click=self._mostrar_confirmacao_exclusao,
+                ),
             ],
             tight=True,
         )
@@ -132,6 +169,38 @@ class MesesView:
         ]
         self.modal_gerenciar_mes.open = True
         self.page.update()
+
+    def _mostrar_confirmacao_exclusao(self, _evento):
+        self.modal_gerenciar_mes.title = ft.Text(
+            f"Excluir mês: {self.mes_em_edicao}?"
+        )
+        self.modal_gerenciar_mes.content = ft.Text(
+            "O mês será removido da lista. As transações registradas nesse período "
+            "serão mantidas."
+        )
+        self.modal_gerenciar_mes.actions = [
+            ft.TextButton("Cancelar", on_click=self._fechar_modal_gerenciar),
+            ft.ElevatedButton(
+                "Excluir mês",
+                icon=ft.Icons.DELETE_OUTLINE,
+                on_click=self._excluir_mes,
+                bgcolor=ft.Colors.RED_700,
+                color=ft.Colors.WHITE,
+            ),
+        ]
+        self.page.update()
+
+    def _excluir_mes(self, _evento):
+        nome_mes = self.mes_em_edicao
+        sucesso, mensagem = processar_exclusao_mes(nome_mes)
+        self._mostrar_mensagem(mensagem, sucesso)
+        if sucesso:
+            if self.mes_atual == nome_mes:
+                self.mes_atual = None
+            self.modal_gerenciar_mes.open = False
+            self.atualizar()
+        else:
+            self.page.update()
 
     def _mostrar_formulario_edicao(self, _evento):
         self.novo_nome_mes_input.value = self.mes_em_edicao
@@ -170,8 +239,4 @@ class MesesView:
         self.page.update()
 
     def _mostrar_mensagem(self, mensagem, sucesso):
-        self.page.snack_bar = ft.SnackBar(
-            ft.Text(mensagem),
-            bgcolor=ft.Colors.GREEN if sucesso else ft.Colors.RED,
-        )
-        self.page.snack_bar.open = True
+        mostrar_mensagem(self.page, mensagem, sucesso)
