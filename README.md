@@ -44,7 +44,10 @@ entra nos totais dele. A data é independente: ao trocar o mês no modal, a data
 levada para o mesmo dia no mês escolhido, mas você pode editá-la depois.
 
 - Renomear um mês leva as transações dele junto.
-- Excluir um mês não apaga as transações: elas voltam se você recriar o mês.
+- **Excluir mês** remove o mês da lista e preserva as transações; elas voltam se
+  você recriar o mês.
+- **Excluir mês e transações** remove o mês e apaga permanentemente todos os
+  lançamentos associados.
 
 ## Dados
 
@@ -53,6 +56,9 @@ anteriores são migrados automaticamente na abertura (cada transação recebe o 
 sua data) e antes disso é feita uma cópia em `financas.db.v1.bak`. Para usar outro arquivo,
 defina a variável de ambiente `CONTROLE_FINANCEIRO_DB`. Na primeira execução são
 criadas categorias padrão e o mês atual.
+
+O arquivo `.env.example` documenta essa variável. O aplicativo não carrega arquivos
+`.env` automaticamente; defina a variável no ambiente antes de iniciar o programa.
 
 A migração automática cobre o banco SQLite v1. Dados da versão antiga em MySQL
 permanecem no banco MySQL e não são importados automaticamente.

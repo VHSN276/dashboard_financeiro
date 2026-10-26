@@ -8,9 +8,11 @@ from controllers.transaction_controller import (
     obter_meses_disponiveis,
     processar_edicao_mes,
     processar_exclusao_mes,
+    processar_exclusao_mes_e_transacoes,
     processar_novo_mes,
 )
 from database.errors import MENSAGEM_BANCO_INDISPONIVEL
+from views.formatacao import formatar_rotulo_mes
 from views.mensagens import mostrar_mensagem
 
 
@@ -99,7 +101,7 @@ class MesesView:
         self.linha_meses.controls = [
             ft.GestureDetector(
                 content=ft.TextButton(
-                    ft.Text(mes),
+                    ft.Text(formatar_rotulo_mes(mes), data=mes),
                     data=mes,
                     style=ft.ButtonStyle(
                         color=(
@@ -143,7 +145,7 @@ class MesesView:
     def _abrir_opcoes_mes(self, evento):
         self.mes_em_edicao = evento.control.data
         self.modal_gerenciar_mes.title = ft.Text(
-            f"Opções: {self.mes_em_edicao}"
+            f"Opções: {formatar_rotulo_mes(self.mes_em_edicao)}"
         )
         self.modal_gerenciar_mes.content = ft.Column(
             [
@@ -161,6 +163,13 @@ class MesesView:
                     color=ft.Colors.WHITE,
                     on_click=self._mostrar_confirmacao_exclusao,
                 ),
+                ft.ElevatedButton(
+                    "Excluir mês e transações",
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    bgcolor=ft.Colors.RED_900,
+                    color=ft.Colors.WHITE,
+                    on_click=self._mostrar_confirmacao_exclusao_com_transacoes,
+                ),
             ],
             tight=True,
         )
@@ -172,7 +181,7 @@ class MesesView:
 
     def _mostrar_confirmacao_exclusao(self, _evento):
         self.modal_gerenciar_mes.title = ft.Text(
-            f"Excluir mês: {self.mes_em_edicao}?"
+            f"Excluir mês: {formatar_rotulo_mes(self.mes_em_edicao)}?"
         )
         self.modal_gerenciar_mes.content = ft.Text(
             "O mês será removido da lista. As transações registradas nesse período "
@@ -190,6 +199,27 @@ class MesesView:
         ]
         self.page.update()
 
+    def _mostrar_confirmacao_exclusao_com_transacoes(self, _evento):
+        mes = formatar_rotulo_mes(self.mes_em_edicao)
+        self.modal_gerenciar_mes.title = ft.Text(
+            f"Excluir {mes} e todas as transações?"
+        )
+        self.modal_gerenciar_mes.content = ft.Text(
+            "O mês e todas as transações registradas nele serão excluídos "
+            "permanentemente. Essa ação não pode ser desfeita."
+        )
+        self.modal_gerenciar_mes.actions = [
+            ft.TextButton("Cancelar", on_click=self._fechar_modal_gerenciar),
+            ft.ElevatedButton(
+                "Excluir tudo",
+                icon=ft.Icons.DELETE_OUTLINE,
+                on_click=self._excluir_mes_e_transacoes,
+                bgcolor=ft.Colors.RED_900,
+                color=ft.Colors.WHITE,
+            ),
+        ]
+        self.page.update()
+
     def _excluir_mes(self, _evento):
         nome_mes = self.mes_em_edicao
         sucesso, mensagem = processar_exclusao_mes(nome_mes)
@@ -202,10 +232,22 @@ class MesesView:
         else:
             self.page.update()
 
+    def _excluir_mes_e_transacoes(self, _evento):
+        nome_mes = self.mes_em_edicao
+        sucesso, mensagem = processar_exclusao_mes_e_transacoes(nome_mes)
+        self._mostrar_mensagem(mensagem, sucesso)
+        if sucesso:
+            if self.mes_atual == nome_mes:
+                self.mes_atual = None
+            self.modal_gerenciar_mes.open = False
+            self.atualizar()
+        else:
+            self.page.update()
+
     def _mostrar_formulario_edicao(self, _evento):
         self.novo_nome_mes_input.value = self.mes_em_edicao
         self.modal_gerenciar_mes.title = ft.Text(
-            f"Editar mês: {self.mes_em_edicao}"
+            f"Editar mês: {formatar_rotulo_mes(self.mes_em_edicao)}"
         )
         self.modal_gerenciar_mes.content = ft.Column(
             [self.novo_nome_mes_input], tight=True

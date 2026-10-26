@@ -15,6 +15,7 @@ from controllers.transaction_controller import (
     processar_nova_transacao,
 )
 from database.errors import MENSAGEM_BANCO_INDISPONIVEL
+from views.formatacao import formatar_rotulo_mes
 from views.mensagens import mostrar_mensagem
 
 
@@ -132,7 +133,10 @@ class TransacoesView:
         self.mes_dropdown = ft.Dropdown(
             label="Mês",
             width=300,
-            options=[ft.dropdown.Option(key=mes, text=mes) for mes in meses],
+            options=[
+                ft.dropdown.Option(key=mes, text=formatar_rotulo_mes(mes))
+                for mes in meses
+            ],
             value=mes_inicial,
             on_select=self._ao_selecionar_mes,
         )
@@ -144,15 +148,25 @@ class TransacoesView:
                 ft.dropdown.Option(key="DESPESA", text="Despesa"),
             ],
             value=dados["tipo_puro"] if dados else None,
+            on_select=self._ao_selecionar_tipo,
         )
+        tipo_inicial = dados["tipo_puro"] if dados else None
         self.categoria_dropdown = ft.Dropdown(
             label="Categoria",
             width=300,
             options=[
                 ft.dropdown.Option(key=opcao["key"], text=opcao["text"])
-                for opcao in self.categorias
+                for opcao in self._categorias_do_tipo(tipo_inicial)
             ],
-            value=dados["categoria_id"] if dados else None,
+            value=(
+                dados["categoria_id"]
+                if dados
+                and any(
+                    opcao["key"] == dados["categoria_id"]
+                    for opcao in self._categorias_do_tipo(tipo_inicial)
+                )
+                else None
+            ),
         )
         self._formulario = ft.Column(
             [
@@ -201,6 +215,23 @@ class TransacoesView:
             return
         ultimo_dia = calendar.monthrange(int(mes[:4]), int(mes[5:]))[1]
         self.data_input.value = f"{mes}-{min(data.day, ultimo_dia):02d}"
+        self.page.update()
+
+    def _categorias_do_tipo(self, tipo):
+        """Retorna todas as categorias até a escolha do tipo; depois filtra."""
+        if tipo is None:
+            return self.categorias
+        return [opcao for opcao in self.categorias if opcao["tipo"] == tipo]
+
+    def _ao_selecionar_tipo(self, _evento):
+        opcoes = self._categorias_do_tipo(self.tipo_dropdown.value)
+        self.categoria_dropdown.options = [
+            ft.dropdown.Option(key=opcao["key"], text=opcao["text"])
+            for opcao in opcoes
+        ]
+        chaves_validas = {opcao["key"] for opcao in opcoes}
+        if self.categoria_dropdown.value not in chaves_validas:
+            self.categoria_dropdown.value = None
         self.page.update()
 
     def _criar_linha_acoes(self):
@@ -362,7 +393,7 @@ class TransacoesView:
         self.ao_alterar_dados(self.filtros_ativos, self.mes_atual)
         mes_salvo = argumentos[3]
         if self.mes_atual and mes_salvo != self.mes_atual:
-            mensagem += f" Ela aparece no mês {mes_salvo}."
+            mensagem += f" Ela aparece no mês {formatar_rotulo_mes(mes_salvo)}."
         self._mostrar_mensagem(mensagem, True)
         self.page.update()
 

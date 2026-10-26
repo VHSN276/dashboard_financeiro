@@ -157,3 +157,7 @@ def mover_transacoes_de_mes(con, mes_antigo, mes_novo):
 
 def excluir_mes(con, nome):
     return con.execute("DELETE FROM meses WHERE nome = ?", (nome,)).rowcount
+
+
+def excluir_transacoes_do_mes(con, nome):
+    return con.execute("DELETE FROM transacoes WHERE mes = ?", (nome,)).rowcount

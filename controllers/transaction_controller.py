@@ -60,9 +60,13 @@ def obter_categorias():
 
 
 def obter_opcoes_categorias():
-    """Opções para dropdown e chips: key = id (texto), text = nome."""
+    """Opções para dropdown e chips, incluindo o tipo para filtrar no formulário."""
     return [
-        {"key": str(categoria["id"]), "text": categoria["nome"]}
+        {
+            "key": str(categoria["id"]),
+            "text": categoria["nome"],
+            "tipo": categoria["tipo"],
+        }
         for categoria in obter_categorias()
     ]
 
@@ -298,5 +302,19 @@ def processar_exclusao_mes(nome):
             if repository.excluir_mes(con, nome) == 0:
                 raise ErroDeValidacao("Mês não encontrado.")
         return "Mês excluído. As transações dele foram mantidas e voltam se você recriar o mês."
+
+    return _processar(operacao)
+
+
+def processar_exclusao_mes_e_transacoes(nome):
+    """Exclui mês e transações dele na mesma transação do banco."""
+
+    def operacao():
+        with conexao() as con:
+            if not repository.existe_mes(con, nome):
+                raise ErroDeValidacao("Mês não encontrado.")
+            repository.excluir_transacoes_do_mes(con, nome)
+            repository.excluir_mes(con, nome)
+        return "Mês e todas as transações dele foram excluídos com sucesso."
 
     return _processar(operacao)
